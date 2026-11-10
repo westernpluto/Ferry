@@ -187,6 +187,12 @@ The server needs a publicly trusted certificate (Let's Encrypt is fine).
 
 ## Troubleshooting
 
+- **"Cannot connect to 127.0.0.1"**: iOS's installer couldn't reach Ferry's built-in server. Ferry now
+  tests its server before handing the link to iOS, and the install screen's Activity list says why it
+  failed: the server didn't start (try another port in Settings › Install Method), or the certificate
+  isn't trusted (turn on "Ferry Local Root" in Settings › General › About › Certificate Trust Settings,
+  and reinstall the profile if you generated a new certificate). If the check passes but iOS still can't
+  connect, the Activity list shows any connection that failed, including TLS errors.
 - **Nothing happens / "Unable to install"**: the profile probably doesn't include this iPhone's or watch's UDID,
   or the certificate isn't trusted. The Activity log shows whether iOS requested `manifest.plist` and `app.ipa`.
 - **No request in the log**: the root certificate isn't fully trusted (step 2 above), or the host in

@@ -43,6 +43,7 @@ final class InstallCoordinator: ObservableObject {
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var stopTask: Task<Void, Never>?
     private var runTask: Task<Void, Never>?
+    private var listenerReady = false
 
     init() {
         server.onEvent = { [weak self] event in
@@ -116,6 +117,8 @@ final class InstallCoordinator: ObservableObject {
             server.removeAllRoutes()
             server.setRoute("\(prefix)/manifest.plist", .init(contentType: "text/xml", source: .data(manifest)))
             server.setRoute("\(prefix)/app.ipa", .init(contentType: "application/octet-stream", source: .file(fileURL)))
+            server.setRoute("\(prefix)/ping", .init(contentType: "text/plain", source: .data(Data("ok".utf8))))
+            listenerReady = false
             try server.start(identity: identity, port: port)
         } catch {
             fail(error.localizedDescription)
@@ -126,9 +129,47 @@ final class InstallCoordinator: ObservableObject {
         phase = .serving
         beginBackgroundTask()
 
+        guard let pingURL = URL(string: "https://\(hostPart):\(port)\(prefix)/ping") else { return }
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            self?.openInstallLink(installURL)
+            guard let self else { return }
+            // Wait for the listener, then check the server the same way iOS's installer will
+            // reach it (HTTPS with the system's trust settings) before handing over the link.
+            for _ in 0..<40 where !self.listenerReady {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            guard self.phase == .serving else { return }
+            if let problem = await Self.preflight(pingURL, host: host, port: port) {
+                self.fail(problem)
+                return
+            }
+            self.append("Checked: the install server is reachable and trusted.")
+            self.openInstallLink(installURL)
+        }
+    }
+
+    /// Returns a description of why the local server can't be used, or nil if it's fine.
+    private static func preflight(_ url: URL, host: String, port: UInt16) async -> String? {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 6
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        do {
+            let (_, response) = try await session.data(from: url)
+            if (response as? HTTPURLResponse)?.statusCode == 200 { return nil }
+            return "Ferry's install server answered with an error. Try again."
+        } catch let error as URLError {
+            switch error.code {
+            case .serverCertificateUntrusted, .serverCertificateHasUnknownRoot, .serverCertificateHasBadDate,
+                 .serverCertificateNotYetValid, .secureConnectionFailed:
+                return "iOS doesn't trust Ferry's HTTPS certificate (\(error.localizedDescription)). In Settings › General › About › Certificate Trust Settings, turn on “Ferry Local Root”. If you generated a new certificate, install its profile again from Settings › Install Method."
+            case .cannotConnectToHost, .timedOut, .networkConnectionLost, .cannotFindHost, .notConnectedToInternet:
+                return "Ferry's install server didn't respond on \(host):\(port) (\(error.localizedDescription)). Try another port in Settings › Install Method, or restart Ferry."
+            default:
+                return "Couldn't reach Ferry's install server: \(error.localizedDescription)"
+            }
+        } catch {
+            return "Couldn't reach Ferry's install server: \(error.localizedDescription)"
         }
     }
 
@@ -230,13 +271,18 @@ final class InstallCoordinator: ObservableObject {
     private func handle(_ event: LocalHTTPSServer.Event) {
         switch event {
         case .ready:
-            break
+            listenerReady = true
         case .stopped:
-            break
+            listenerReady = false
+        case .waiting(let message):
+            append("Install server is waiting: \(message)")
+        case .connectionFailed(let message):
+            append("A connection to the install server failed: \(message)")
         case .failed(let message):
             fail("Server error: \(message)")
         case .request(_, let path, let status):
             let file = path.split(separator: "/").last.map(String.init) ?? path
+            if file == "ping" { return }
             if status >= 400 {
                 append("Request for \(file) failed (\(status)).")
             } else if file == "manifest.plist" {

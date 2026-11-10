@@ -26,6 +26,10 @@ final class LocalHTTPSServer {
         case request(method: String, path: String, status: Int)
         case transfer(path: String, sent: Int64, total: Int64)
         case transferFinished(path: String)
+        /// A client connected but the connection failed, e.g. during the TLS handshake.
+        case connectionFailed(String)
+        /// The listener can't accept connections yet (for example, the port is busy).
+        case waiting(String)
     }
 
     enum ServerError: LocalizedError {
@@ -76,7 +80,9 @@ final class LocalHTTPSServer {
         } else {
             parameters = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
         }
-        parameters.acceptLocalOnly = true
+        // Only this device can connect: bind to the loopback interface (127.0.0.1 / ::1).
+        // (`acceptLocalOnly` means "local network", which doesn't reliably include loopback.)
+        parameters.requiredInterfaceType = .loopback
         parameters.allowLocalEndpointReuse = true
 
         let listener = try NWListener(using: parameters, on: nwPort)
@@ -89,6 +95,8 @@ final class LocalHTTPSServer {
                 DispatchQueue.main.async { self?.stop() }
             case .cancelled:
                 self?.emit(.stopped)
+            case .waiting(let error):
+                self?.emit(.waiting(error.localizedDescription))
             default:
                 break
             }
@@ -149,7 +157,13 @@ private final class ConnectionHandler {
     func start() {
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
-            case .failed, .cancelled:
+            case .failed(let error):
+                self?.onEvent?(.connectionFailed(Self.describe(error)))
+                self?.finish()
+            case .waiting(let error):
+                self?.onEvent?(.connectionFailed(Self.describe(error)))
+                self?.connection.cancel()
+            case .cancelled:
                 self?.finish()
             default:
                 break
@@ -161,6 +175,15 @@ private final class ConnectionHandler {
 
     func cancel() {
         connection.cancel()
+    }
+
+    private static func describe(_ error: NWError) -> String {
+        switch error {
+        case .tls(let status):
+            return "secure connection failed (TLS \(status)): the client didn't accept the certificate"
+        default:
+            return error.localizedDescription
+        }
     }
 
     private func finish() {
