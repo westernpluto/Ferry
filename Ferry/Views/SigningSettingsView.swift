@@ -7,10 +7,15 @@ struct SigningSettingsView: View {
 
     private enum ImportKind { case certificate, profiles }
 
-    @State private var importKind: ImportKind?
+    // Which button opened the picker. Kept separately from `showingImporter`, because the
+    // picker's binding is reset to false before its completion handler runs.
+    @State private var importKind: ImportKind = .certificate
+    @State private var showingImporter = false
     @State private var pendingP12: Data?
+    @State private var pendingP12Name = ""
     @State private var password = ""
     @State private var message: String?
+    @FocusState private var passwordFocused: Bool
 
     var body: some View {
         Form {
@@ -36,26 +41,11 @@ struct SigningSettingsView: View {
         .navigationTitle("Signing")
         .navigationBarTitleDisplayMode(.inline)
         .fileImporter(
-            isPresented: Binding(get: { importKind != nil }, set: { if !$0 { importKind = nil } }),
-            allowedContentTypes: importKind == .certificate ? [.pkcs12] : [.mobileProvision, .data],
+            isPresented: $showingImporter,
+            allowedContentTypes: importKind == .certificate ? [.pkcs12, .data] : [.mobileProvision, .data],
             allowsMultipleSelection: importKind == .profiles
         ) { result in
-            let kind = importKind
-            importKind = nil
-            guard case .success(let urls) = result else { return }
-            switch kind {
-            case .certificate:
-                guard let url = urls.first else { return }
-                let accessing = url.startAccessingSecurityScopedResource()
-                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                pendingP12 = try? Data(contentsOf: url)
-                if pendingP12 == nil { message = "Couldn't read that file." }
-            case .profiles:
-                let problems = signing.importProfiles(from: urls)
-                if !problems.isEmpty { message = problems.joined(separator: "\n") }
-            case nil:
-                break
-            }
+            handleImport(result, kind: importKind)
         }
         .alert("Signing", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
             Button("OK", role: .cancel) {}
@@ -72,22 +62,29 @@ struct SigningSettingsView: View {
                 } icon: {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
                 }
-                Button("Replace Certificate…") { importKind = .certificate }
+                Button("Replace Certificate…") { pick(.certificate) }
                 Button("Remove Certificate", role: .destructive) { signing.removeCertificate() }
             } else {
                 Button {
-                    importKind = .certificate
+                    pick(.certificate)
                 } label: {
                     Label("Add Certificate (.p12)…", systemImage: "plus.circle.fill")
                 }
             }
 
             if pendingP12 != nil {
+                Label(pendingP12Name, systemImage: "doc.badge.ellipsis")
+                    .foregroundStyle(.secondary)
                 SecureField("Certificate password", text: $password)
+                    .focused($passwordFocused)
                     .submitLabel(.done)
                     .onSubmit(saveCertificate)
                 Button("Save Certificate", action: saveCertificate)
                     .bold()
+                Button("Cancel", role: .cancel) {
+                    pendingP12 = nil
+                    password = ""
+                }
             }
         } header: {
             Text("Certificate")
@@ -107,7 +104,7 @@ struct SigningSettingsView: View {
                 }
             }
             Button {
-                importKind = .profiles
+                pick(.profiles)
             } label: {
                 Label("Add Profiles…", systemImage: "plus.circle.fill")
             }
@@ -118,12 +115,57 @@ struct SigningSettingsView: View {
         }
     }
 
+    private func pick(_ kind: ImportKind) {
+        importKind = kind
+        showingImporter = true
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>, kind: ImportKind) {
+        let urls: [URL]
+        switch result {
+        case .success(let picked):
+            urls = picked
+        case .failure(let error):
+            message = error.localizedDescription
+            return
+        }
+        guard !urls.isEmpty else { return }
+
+        switch kind {
+        case .certificate:
+            let url = urls[0]
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            do {
+                pendingP12 = try Data(contentsOf: url)
+                pendingP12Name = url.lastPathComponent
+                password = ""
+                // Give the picker time to dismiss before moving focus.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    passwordFocused = true
+                }
+            } catch {
+                message = "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
+            }
+        case .profiles:
+            let before = signing.profiles.count
+            let problems = signing.importProfiles(from: urls)
+            if !problems.isEmpty {
+                message = problems.joined(separator: "\n")
+            } else if signing.profiles.count == before {
+                message = "That profile was already added, so it was replaced with the new copy."
+            }
+        }
+    }
+
     private func saveCertificate() {
         guard let data = pendingP12 else { return }
         do {
             try signing.importCertificate(p12: data, password: password)
             pendingP12 = nil
             password = ""
+            passwordFocused = false
         } catch {
             message = error.localizedDescription
         }
