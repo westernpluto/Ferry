@@ -89,6 +89,39 @@ The detail screen flags:
 - the iOS app and watch app signed by different teams
 - a UDID checker: paste your watch's UDID to see whether the profile includes it
 
+## Installing the app itself from GitHub Pages (no Mac needed)
+
+The `Install page` workflow (`.github/workflows/pages.yml`) builds the app, signs it on GitHub's Mac
+runner with Apple's own `codesign`, and publishes an install page. You just open it in Safari.
+
+1. **Turn on Pages:** repository Settings › Pages › Source: **GitHub Actions**.
+2. **Add secrets** (Settings › Secrets and variables › Actions › New repository secret):
+
+   | Secret | Value |
+   | --- | --- |
+   | `SIGNING_CERTIFICATE_P12` | your `.p12`, base64-encoded (`base64 -i cert.p12`) |
+   | `SIGNING_CERTIFICATE_PASSWORD` | its password |
+   | `PROVISIONING_PROFILE` | your `.mobileprovision`, base64-encoded |
+
+   The profile needs to cover the app's bundle ID and list your iPhone. With a wildcard profile
+   (`com.you.*`) the app is signed as `com.you.watchinstaller`. To choose the ID yourself, add a
+   repository **variable** `APP_BUNDLE_ID`.
+3. **Run the workflow** (Actions › Install page › Run workflow, or push to the default branch).
+4. On the iPhone, open `https://<user>.github.io/<repo>/` in Safari and tap **Install**.
+
+The page is plain static files: no server code and no outside scripts or fonts. It's cached by a
+service worker, so it opens without a connection and can be added to the Home Screen. Tapping
+Install still needs internet, because iOS downloads the app itself. Once the app is installed,
+everything in it works offline: signing, the HTTPS certificate and installing your apps.
+
+**Privacy:** GitHub Pages sites are public, even for private repositories (unless you're on GitHub
+Enterprise with private Pages). The signed IPA contains your provisioning profile, which lists your
+team name and the UDIDs of the devices in it. The page doesn't show them, but anyone with the link
+can download the IPA. Only devices in the profile can run it. The page asks search engines not to index it.
+
+Without the secrets, the page still publishes, offering only the unsigned build. You can re-sign that
+build inside the app later to update it.
+
 ## Building
 
 Requirements: **Xcode 27.1 or later** (the iOS 27.1 SDK makes the app fill both iPhone Duo displays),
@@ -163,5 +196,7 @@ WatchAppInstaller/
 Packages/ZSignKit/        zsign-based signer (C++/OpenSSL) with a Swift API
 WatchAppInstallerTests/   Unit tests for parsing, validation, signing plans, manifest and HTTP handling
 scripts/make-local-cert.sh
+scripts/ci_sign_app.sh, ci_profile.py, build_site.py   CI signing and the install page
+site/                     Static, offline-capable install page (GitHub Pages)
 project.yml               XcodeGen spec
 ```
