@@ -20,6 +20,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== location.origin) return;
   if (/\.(ipa|plist)$/.test(url.pathname)) return;
+  // Private builds (i/<key>/) are never cached, so nothing private is stored on the device.
+  if (url.pathname.includes("/i/")) return;
 
   // Build details: network first so a new build shows up, cached copy when offline.
   if (url.pathname.endsWith("/info.json")) {

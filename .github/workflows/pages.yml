@@ -1,15 +1,17 @@
 name: Install page
 
-# Builds the app, signs it with your certificate and profile, and publishes an
-# install page on GitHub Pages. Open the page in Safari on the iPhone and tap Install.
+# Builds Ferry, signs it with your certificate and profile, and publishes an install
+# page on GitHub Pages. Each person runs this in their own copy of the repository.
 #
 # The easy way to provide the certificate and profile is the page itself
-# ("Sign with your certificate"): it encrypts them in the browser, saves them as
-# the secrets below and starts this workflow. They can also be added by hand in
-# Settings › Secrets and variables › Actions:
+# ("Sign with your certificate"): it encrypts them in the browser, saves them as the
+# secrets below, starts this workflow, and can delete them again afterwards.
 #   SIGNING_CERTIFICATE_P12        base64 of your .p12
 #   SIGNING_CERTIFICATE_PASSWORD   the .p12 password
 #   PROVISIONING_PROFILE           base64 of your .mobileprovision
+#   INSTALL_KEY                    optional: private mode. The signed app is published
+#                                  under i/<key>/ (only reachable with the link) and
+#                                  removed again after `keep_minutes`.
 # Bundle ID: the `bundle_id` input, or the repository variable APP_BUNDLE_ID.
 
 on:
@@ -20,15 +22,17 @@ on:
         description: Bundle ID to sign as (optional; must be covered by the profile)
         required: false
         type: string
+      keep_minutes:
+        description: Private mode only. Minutes before the signed app is taken down (0 = keep it)
+        required: false
+        type: string
+        default: "30"
 
 permissions:
   contents: read
   pages: write
   id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
+  actions: write   # to delete the uploaded site copy after deploying
 
 jobs:
   check:
@@ -50,6 +54,9 @@ jobs:
     needs: check
     if: needs.check.outputs.base_url != ''
     runs-on: xcode-27
+    outputs:
+      private: ${{ steps.site.outputs.private }}
+      keep_minutes: ${{ steps.site.outputs.keep_minutes }}
     env:
       HAS_SIGNING: ${{ secrets.SIGNING_CERTIFICATE_P12 != '' && secrets.PROVISIONING_PROFILE != '' }}
     steps:
@@ -91,29 +98,123 @@ jobs:
 
       - name: No signing secrets
         if: env.HAS_SIGNING != 'true'
-        run: echo "::notice::Signing secrets aren't set, so the page will only offer the unsigned build. See the comments at the top of pages.yml."
+        run: echo "::notice::No certificate is saved, so the page only offers the unsigned build. Use “Sign with your certificate” on the page."
 
       - name: Assemble site
+        id: site
+        env:
+          INSTALL_KEY: ${{ secrets.INSTALL_KEY }}
+          KEEP_MINUTES: ${{ inputs.keep_minutes || '30' }}
+          BASE_URL: ${{ needs.check.outputs.base_url }}
         run: |
-          ARGS=()
+          COMMON=(--base-url "$BASE_URL" --version "$APP_VERSION" --build "$APP_BUILD"
+                  --commit "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --unsigned-ipa Ferry-unsigned.ipa)
+          KEEP=$(python3 -c 'import sys; v=sys.argv[1]; print(max(0, min(240, int(v))) if v.isdigit() else 30)' "$KEEP_MINUTES")
+          PRIVATE=false
+          SIGNED=()
           if [ -f Ferry.ipa ]; then
-            ARGS+=(--signed-ipa Ferry.ipa --signing-info signing-info.json)
+            SIGNED=(--signed-ipa Ferry.ipa --signing-info signing-info.json)
+            if [ -n "$INSTALL_KEY" ]; then
+              PRIVATE=true
+              SIGNED+=(--install-key "$INSTALL_KEY")
+              if [ "$KEEP" -gt 0 ]; then
+                EXPIRES=$(python3 -c 'import datetime,sys; print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=int(sys.argv[1]))).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$KEEP")
+                SIGNED+=(--expires-at "$EXPIRES")
+              fi
+            fi
           fi
-          python3 scripts/build_site.py _site \
-            --base-url "${{ needs.check.outputs.base_url }}" \
-            --version "$APP_VERSION" --build "$APP_BUILD" --commit "$GITHUB_SHA" \
-            --unsigned-ipa Ferry-unsigned.ipa "${ARGS[@]}"
+          python3 scripts/build_site.py _site "${COMMON[@]}" "${SIGNED[@]}"
+          # The same site without the signed app, used to take it down later.
+          python3 scripts/build_site.py _site_public "${COMMON[@]}"
+          echo "private=$PRIVATE" >> "$GITHUB_OUTPUT"
+          echo "keep_minutes=$KEEP" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+          retention-days: 1
+
+      - if: steps.site.outputs.private == 'true' && steps.site.outputs.keep_minutes != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-site
+          path: _site_public
+          include-hidden-files: true
+          retention-days: 1
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Delete the uploaded copy of the site
+        # The deployed site is what's served; the run's copy (which holds the signed
+        # app) would otherwise stay downloadable from this run for a day.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+          for id in $(api "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" |
+                      python3 -c 'import json,sys; print(" ".join(str(a["id"]) for a in json.load(sys.stdin)["artifacts"] if a["name"] == "github-pages"))'); do
+            api -X DELETE "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$id" && echo "Deleted artifact $id"
+          done
+
+  expire:
+    # Private mode: wait, then take the signed app down again.
+    needs: [build, deploy]
+    if: needs.build.outputs.private == 'true' && needs.build.outputs.keep_minutes != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 250
+    steps:
+      - run: sleep $(( ${{ needs.build.outputs.keep_minutes }} * 60 ))
+
+  unpublish:
+    needs: [check, build, expire]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+    steps:
+      - name: Is this build still the one being served?
+        id: current
+        env:
+          BASE_URL: ${{ needs.check.outputs.base_url }}
+        run: |
+          LIVE=$(curl -fsSL "${BASE_URL%/}/info.json?t=$(date +%s)" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("runId",""))' || true)
+          if [ "$LIVE" = "$GITHUB_RUN_ID" ]; then
+            echo "serving=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "A newer build is live; it takes care of its own removal."
+          fi
+      - if: steps.current.outputs.serving == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: public-site
+          path: _site_public
+      - if: steps.current.outputs.serving == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site_public
+          retention-days: 1
+      - if: steps.current.outputs.serving == 'true'
+        uses: actions/deploy-pages@v4
+      - name: Delete leftover artifacts
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+          for id in $(api "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" |
+                      python3 -c 'import json,sys; print(" ".join(str(a["id"]) for a in json.load(sys.stdin)["artifacts"]))'); do
+            api -X DELETE "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$id" && echo "Deleted artifact $id"
+          done

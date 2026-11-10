@@ -83,6 +83,15 @@
     background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px;
   }
   input[type=file] { padding: 9px 10px; }
+  select { width: 100%; font: inherit; font-size: 16px; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; }
+  label.check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; }
+  label.check input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
+  #result { white-space: normal; margin-top: 14px; }
+  #result input { margin: 8px 0; font-size: 14px; }
+  #result-expiry { display: block; font-size: 13px; color: var(--muted); }
+  .secondary-button { margin-top: 10px; width: 100%; font: inherit; font-weight: 600; color: var(--accent);
+    background: transparent; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
   .hint { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
   .hint a, .note a, #progress a { color: var(--accent); }
   .note { font-size: 14px; background: var(--bg); border-radius: 10px; padding: 10px 12px; margin: 8px 0 0; white-space: pre-line; }
@@ -111,9 +120,14 @@
 
   <details class="card" id="sign-card">
     <summary id="sign-summary">Sign with your certificate</summary>
-    <p class="hint">Pick your files here. They're encrypted in this browser and saved as your repository's
-      secrets, then GitHub builds and signs Ferry and this page updates. Takes about 5–10 minutes.</p>
+    <p class="hint">Everyone signs in their own copy of Ferry on GitHub, so your certificate and app stay in
+      your account. Your files are encrypted in this browser before they're sent. Takes about 5–10 minutes.</p>
     <form id="sign-form" autocomplete="off">
+      <label for="repo">Your copy of Ferry</label>
+      <input type="text" id="repo" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="your-name/Ferry">
+      <p class="hint">Don't have one? <a id="fork-link" target="_blank" rel="noopener">Copy Ferry to your GitHub account</a>.
+        Then, in your copy: <b>Settings › Pages › Source: GitHub Actions</b>, and open the <b>Actions</b> tab once
+        to turn workflows on.</p>
       <label for="p12">Certificate (.p12)</label>
       <input type="file" id="p12">
       <label for="p12-password">Certificate password</label>
@@ -123,15 +137,30 @@
       <p class="note" id="profile-summary" hidden></p>
       <label for="bundle-id">Bundle ID <span class="opt">(optional)</span></label>
       <input type="text" id="bundle-id" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="com.you.ferry">
+      <label for="keep">Install link</label>
+      <select id="keep">
+        <option value="15">Private, removed after 15 minutes</option>
+        <option value="30" selected>Private, removed after 30 minutes</option>
+        <option value="60">Private, removed after 1 hour</option>
+        <option value="120">Private, removed after 2 hours</option>
+        <option value="public">Public, stays on your page</option>
+      </select>
+      <p class="hint">A private link is a secret address only you get. After it's removed, nothing signed is left online.</p>
+      <label class="check"><input type="checkbox" id="forget" checked> Delete my certificate and profile from GitHub after signing</label>
       <label for="token">GitHub token</label>
       <input type="password" id="token" autocomplete="off">
       <p class="hint"><a id="token-link" target="_blank" rel="noopener">Create a fine-grained token</a>:
-        Repository access › Only select repositories › this repo. Permissions: <b>Actions</b> and <b>Secrets</b>
-        set to Read and write. A 7-day expiry is plenty. It's only used in this tab and never saved.</p>
-      <label for="repo">Repository</label>
-      <input type="text" id="repo" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="owner/name">
+        Repository access › Only select repositories › your copy. Permissions: <b>Actions</b> and <b>Secrets</b>
+        set to Read and write, <b>Pages</b> set to Read. A 7-day expiry is plenty. It's only used in this tab and never saved.</p>
       <button class="button small" id="sign-button" type="submit">Sign &amp; Publish</button>
       <ol id="progress" hidden></ol>
+      <div id="result" class="note" hidden>
+        <b>Your install link</b>
+        <input type="text" id="result-link" readonly>
+        <span id="result-expiry"></span>
+        <a class="button small" id="result-open" href="#">Open Install Page</a>
+        <button class="secondary-button" id="result-copy" type="button">Copy Link</button>
+      </div>
     </form>
   </details>
 
@@ -165,6 +194,10 @@
   var installButton = document.getElementById("install");
   var statusLine = document.getElementById("status");
   var info = null;
+  var keyMatch = /^#k=([0-9a-f]{32,128})$/.exec(location.hash);
+  var key = keyMatch ? keyMatch[1] : null;
+  var base = key ? "i/" + key + "/" : "";
+  var missingPrivate = false;
 
   function setStatus(text, kind) {
     statusLine.textContent = text;
@@ -187,8 +220,19 @@
     document.getElementById("offline-state").textContent =
       online ? "You're online." : "You're offline. Showing the saved copy of this page.";
 
+    if (missingPrivate) {
+      installButton.setAttribute("aria-disabled", "true");
+      setStatus(online ? "This install link has expired or was replaced. Sign again to get a new one."
+                       : "Connect to the internet to use this install link.", "warn");
+      return;
+    }
     if (!info) {
       setStatus(online ? "Couldn't load build details." : "Open this page once while online.", "warn");
+      return;
+    }
+    if (!info.signed && info.private) {
+      installButton.setAttribute("aria-disabled", "true");
+      setStatus("Install links on this page are private. Open the link you got after signing, or sign below.", "warn");
       return;
     }
     if (!info.signed) {
@@ -201,10 +245,12 @@
       setStatus("Connect to the internet to install. iOS downloads the app itself.", "warn");
       return;
     }
-    var manifest = new URL("manifest.plist", location.href).href;
+    var manifest = new URL(base + "manifest.plist", location.href).href;
     installButton.href = "itms-services://?action=download-manifest&url=" + encodeURIComponent(manifest);
     installButton.setAttribute("aria-disabled", "false");
-    setStatus("Tap Install, then Install again when iOS asks.", "ok");
+    var expiry = info.expiresAt ? " This private link stops working at " +
+      new Date(info.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + "." : "";
+    setStatus("Tap Install, then Install again when iOS asks." + expiry, "ok");
   }
 
   installButton.addEventListener("click", function () {
@@ -212,9 +258,15 @@
     setStatus("Check your Home Screen. If nothing happens, open this page in Safari.", "ok");
   });
 
-  fetch("info.json", { cache: "no-store" })
-    .catch(function () { return caches.match("info.json"); })
-    .then(function (response) { return response ? response.json() : null; })
+  var load = key
+    ? fetch(base + "info.json?t=" + Date.now(), { cache: "no-store" }).then(function (response) {
+        if (response.status === 404) { missingPrivate = true; return null; }
+        return response;
+      })
+    : fetch("info.json", { cache: "no-store" }).catch(function () { return caches.match("info.json"); });
+
+  load
+    .then(function (response) { return response && response.ok ? response.json() : null; })
     .then(function (data) {
       info = data;
       var signCard = document.getElementById("sign-card");
@@ -238,6 +290,7 @@
     })
     .catch(function () { render(); });
 
+  window.addEventListener("hashchange", function () { location.reload(); });
   window.addEventListener("online", render);
   window.addEventListener("offline", render);
 

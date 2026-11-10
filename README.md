@@ -91,44 +91,51 @@ The detail screen flags:
 
 ## Installing the app itself from GitHub Pages (no Mac needed)
 
-The `Install page` workflow (`.github/workflows/pages.yml`) publishes an install page for Ferry on
-GitHub Pages. You upload your certificate and profile on that page, GitHub builds and signs the app on
-its Mac runner with Apple's own `codesign`, and you install it from the same page in Safari.
+Ferry's install page lets anyone sign and install Ferry with their own certificate, in their own
+GitHub account. Nothing personal goes through anyone else's repository or page.
 
-**Once:** turn on Pages in the repository's Settings › Pages › Source: **GitHub Actions**, then run the
-workflow (Actions › Install page › Run workflow) so the page exists.
+**One-time setup (each person):**
+1. **Copy Ferry to your account:** fork this repository (the page links to it). The original must be
+   public for others to copy it.
+2. In your copy, turn on **Settings › Pages › Source: GitHub Actions**, and open the **Actions** tab once
+   to turn workflows on.
+3. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new) for **your copy
+   only**, with **Actions** and **Secrets** set to *Read and write* and **Pages** set to *Read*. A short
+   expiry is fine.
 
-**Then, on the page** (`https://<user>.github.io/<repo>/`), open **Sign with your certificate** and:
+**Signing, on any Ferry install page** (`https://<user>.github.io/<repo>/`), under **Sign with your certificate**:
+enter your copy (`your-name/Ferry`), pick your **.p12** and password and your **.mobileprovision**, choose
+how long the install link should last, paste the token, and tap **Sign & Publish**. The page:
 
-1. Pick your **.p12** and type its password.
-2. Pick your **.mobileprovision**. The page reads it and shows the App ID, type, device count and expiry.
-   Expired or App Store profiles are rejected before anything is sent. With a wildcard profile
-   (`com.you.*`) the app is signed as `com.you.ferry`, or you can type a bundle ID.
-3. Paste a **GitHub token**. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new)
-   limited to this repository, with **Actions** and **Secrets** set to *Read and write*. A short
-   expiry is fine. It's only used in that tab and never saved.
-4. Tap **Sign & Publish**. The page encrypts the files in the browser (libsodium sealed boxes, as GitHub
-   requires), saves them as the repository's secrets, starts the build and follows it. When the signed
-   build is live (about 5–10 minutes), the page reloads and the **Install** button is ready.
+1. Reads the profile in the browser and rejects expired or App Store profiles, or a bundle ID the profile
+   doesn't cover. (With a wildcard `com.you.*` profile the app is signed as `com.you.ferry`.)
+2. Checks your copy has the workflow, workflows turned on and Pages set up, and explains how to fix
+   anything that's missing.
+3. Encrypts your files in the browser (libsodium sealed boxes, as GitHub requires) and saves them as your
+   copy's secrets, then starts its build and follows it.
+4. Gives you your install link. Open it in Safari on the iPhone and tap **Install**.
 
-Your files only go to GitHub, encrypted. Secrets can't be read back, even by you, and the build uses them
-in a temporary keychain that's deleted afterwards. To use a different certificate later, use
-**Sign again with a different certificate** on the page. You can still add the secrets by hand
-(`SIGNING_CERTIFICATE_P12`, `SIGNING_CERTIFICATE_PASSWORD`, `PROVISIONING_PROFILE`, base64 for the files)
-if you prefer.
+### Private by default
+
+| What | Where it goes |
+| --- | --- |
+| Your `.p12`, password and profile | Encrypted secrets in **your** copy. They can't be read back, and by default they're **deleted as soon as the build has used them**. The build keeps them in a temporary keychain that's deleted afterwards |
+| The signed Ferry app (it includes your profile: team name and device UDIDs) | Your Pages site, in a folder named by a random 256-bit key (`…/i/<key>/`). Nobody can guess it, and nothing on the public page points to it. You get the link `…/#k=<key>`. The part after `#` is never sent to a server |
+| How long it stays online | Removed automatically after 15, 30 (default), 60 or 120 minutes: the workflow republishes the site without it. Or choose **Public** to keep an always-available Install button |
+| The build's own copy of the site | Deleted from the run as soon as it's deployed, so it can't be downloaded from the Actions tab |
+| Your token | Only used in that browser tab, never saved. Only the name of your copy is remembered on that device |
+
+The one limit is that iOS downloads the app with no login, so while the link is up, anyone who has it
+could download the app. That's why it's secret and short-lived. Once Ferry is installed, nothing else
+needs the web: it signs and installs your apps on the iPhone, offline.
+
+You can also add the secrets by hand in your copy's Settings (`SIGNING_CERTIFICATE_P12`,
+`SIGNING_CERTIFICATE_PASSWORD`, `PROVISIONING_PROFILE` as base64 for the files, and optionally
+`INSTALL_KEY`, 64 hex characters, for private mode) and run the **Install page** workflow.
 
 The page is plain static files: no server code and no outside scripts or fonts (TweetNaCl, public domain,
 is bundled for the encryption). It's cached by a service worker, so it opens without a connection and
-can be added to the Home Screen. Signing and installing need internet, because GitHub builds the app and
-iOS downloads it itself. Once Ferry is installed, everything in it works offline.
-
-**Privacy:** GitHub Pages sites are public, even for private repositories (unless you're on GitHub
-Enterprise with private Pages). The signed IPA contains your provisioning profile, which lists your
-team name and the UDIDs of the devices in it. The page doesn't show them, but anyone with the link
-can download the IPA. Only devices in the profile can run it. The page asks search engines not to index it.
-
-Until you sign, the page offers only the unsigned build, which you can re-sign inside Ferry later
-to update it.
+can be added to the Home Screen. Signing and installing need internet.
 
 ## Building
 
