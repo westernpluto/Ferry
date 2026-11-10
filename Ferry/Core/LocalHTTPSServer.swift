@@ -26,6 +26,8 @@ final class LocalHTTPSServer {
         case request(method: String, path: String, status: Int)
         case transfer(path: String, sent: Int64, total: Int64)
         case transferFinished(path: String)
+        /// A client opened a TCP connection (before TLS).
+        case connectionOpened(String)
         /// A client connected but the connection failed, e.g. during the TLS handshake.
         case connectionFailed(String)
         /// The listener can't accept connections yet (for example, the port is busy).
@@ -155,6 +157,12 @@ private final class ConnectionHandler {
     }
 
     func start() {
+        let peer: String
+        switch connection.endpoint {
+        case .hostPort(let host, _): peer = "\(host)"
+        default: peer = "\(connection.endpoint)"
+        }
+        onEvent?(.connectionOpened(peer))
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
             case .failed(let error):
@@ -200,6 +208,11 @@ private final class ConnectionHandler {
             if let request = HTTPRequest.parse(self.buffer) {
                 self.respond(to: request)
             } else if error != nil || isComplete || self.buffer.count > Self.maxHeaderSize {
+                if let error {
+                    self.onEvent?(.connectionFailed(Self.describe(error)))
+                } else if self.buffer.isEmpty {
+                    self.onEvent?(.connectionFailed("the client closed the connection without sending a request (it may have rejected the certificate)"))
+                }
                 self.connection.cancel()
             } else {
                 self.receive()

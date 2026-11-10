@@ -276,6 +276,8 @@ final class InstallCoordinator: ObservableObject {
             listenerReady = false
         case .waiting(let message):
             append("Install server is waiting: \(message)")
+        case .connectionOpened(let peer):
+            append("Something connected to the install server (\(peer)).")
         case .connectionFailed(let message):
             append("A connection to the install server failed: \(message)")
         case .failed(let message):
