@@ -1,0 +1,59 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          for runtime, items in sorted(devices.items(), reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for d in items:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit(0)
+          ')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test
+        run: |
+          xcodebuild test \
+            -project WatchAppInstaller.xcodeproj \
+            -scheme WatchAppInstaller \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build unsigned IPA
+        run: |
+          xcodebuild build \
+            -project WatchAppInstaller.xcodeproj \
+            -scheme WatchAppInstaller \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/WatchAppInstaller.app Payload/
+          zip -qr WatchAppInstaller-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WatchAppInstaller-unsigned
+          path: WatchAppInstaller-unsigned.ipa

@@ -1,0 +1,8 @@
+.DS_Store
+*.xcodeproj
+xcuserdata/
+DerivedData/
+build/
+Payload/
+*.ipa
+local-cert/

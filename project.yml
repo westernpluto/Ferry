@@ -1,0 +1,82 @@
+# XcodeGen spec. Generate the Xcode project with:  xcodegen generate
+name: WatchAppInstaller
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation
+    from: 0.9.19
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  WatchAppInstaller:
+    type: application
+    platform: iOS
+    sources:
+      - path: WatchAppInstaller
+    dependencies:
+      - package: ZIPFoundation
+    info:
+      path: WatchAppInstaller/Info.plist
+      properties:
+        CFBundleDisplayName: Watch Installer
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: iOS App Archive
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.apple.itunes.ipa
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.apple.itunes.ipa
+            UTTypeDescription: iOS App Archive
+            UTTypeConformsTo:
+              - public.zip-archive
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - ipa
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.WatchAppInstaller
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+
+  WatchAppInstallerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: WatchAppInstallerTests
+    dependencies:
+      - target: WatchAppInstaller
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.WatchAppInstallerTests
+
+schemes:
+  WatchAppInstaller:
+    build:
+      targets:
+        WatchAppInstaller: all
+        WatchAppInstallerTests: [test]
+    test:
+      targets:
+        - WatchAppInstallerTests
