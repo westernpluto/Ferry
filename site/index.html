@@ -71,6 +71,26 @@
   dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
   small { color: var(--muted); display: block; font-size: 13px; margin-top: 8px; }
   [hidden] { display: none !important; }
+  details.card > summary { cursor: pointer; font-weight: 600; font-size: 17px; list-style: none; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::after { content: "›"; float: right; color: var(--muted); transition: transform .2s; }
+  details.card[open] > summary::after { transform: rotate(90deg); }
+  form { margin-top: 12px; }
+  label { display: block; font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+  label .opt { font-weight: 400; color: var(--muted); }
+  input[type=text], input[type=password], input[type=file] {
+    width: 100%; font: inherit; font-size: 16px; color: var(--text);
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px;
+  }
+  input[type=file] { padding: 9px 10px; }
+  .hint { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  .hint a, .note a, #progress a { color: var(--accent); }
+  .note { font-size: 14px; background: var(--bg); border-radius: 10px; padding: 10px 12px; margin: 8px 0 0; white-space: pre-line; }
+  .note.warn, #progress li.warn { color: var(--warn); }
+  #progress { margin: 14px 0 0; padding-left: 22px; font-size: 15px; }
+  #progress li.done { color: var(--ok); }
+  .button.small { margin-top: 18px; }
+  button.button:disabled { opacity: .5; }
 </style>
 </head>
 <body>
@@ -88,6 +108,32 @@
     <p class="status" id="status">Loading…</p>
     <a class="secondary" id="unsigned" href="Ferry-unsigned.ipa" download hidden>Download unsigned build (for re-signing in the app)</a>
   </section>
+
+  <details class="card" id="sign-card">
+    <summary id="sign-summary">Sign with your certificate</summary>
+    <p class="hint">Pick your files here. They're encrypted in this browser and saved as your repository's
+      secrets, then GitHub builds and signs Ferry and this page updates. Takes about 5–10 minutes.</p>
+    <form id="sign-form" autocomplete="off">
+      <label for="p12">Certificate (.p12)</label>
+      <input type="file" id="p12">
+      <label for="p12-password">Certificate password</label>
+      <input type="password" id="p12-password" autocomplete="off">
+      <label for="profile">Provisioning profile (.mobileprovision)</label>
+      <input type="file" id="profile">
+      <p class="note" id="profile-summary" hidden></p>
+      <label for="bundle-id">Bundle ID <span class="opt">(optional)</span></label>
+      <input type="text" id="bundle-id" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="com.you.ferry">
+      <label for="token">GitHub token</label>
+      <input type="password" id="token" autocomplete="off">
+      <p class="hint"><a id="token-link" target="_blank" rel="noopener">Create a fine-grained token</a>:
+        Repository access › Only select repositories › this repo. Permissions: <b>Actions</b> and <b>Secrets</b>
+        set to Read and write. A 7-day expiry is plenty. It's only used in this tab and never saved.</p>
+      <label for="repo">Repository</label>
+      <input type="text" id="repo" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="owner/name">
+      <button class="button small" id="sign-button" type="submit">Sign &amp; Publish</button>
+      <ol id="progress" hidden></ol>
+    </form>
+  </details>
 
   <section class="card" id="after">
     <h2>After installing</h2>
@@ -110,6 +156,9 @@
   </section>
 </main>
 
+<script src="vendor/nacl-fast.min.js"></script>
+<script src="sealedbox.js"></script>
+<script src="setup.js"></script>
 <script>
 (function () {
   "use strict";
@@ -144,7 +193,7 @@
     }
     if (!info.signed) {
       installButton.setAttribute("aria-disabled", "true");
-      setStatus("Not signed yet. Add the signing secrets to the repository and run the workflow again.", "warn");
+      setStatus("Not signed yet. Use “Sign with your certificate” below.", "warn");
       return;
     }
     if (!online) {
@@ -168,6 +217,10 @@
     .then(function (response) { return response ? response.json() : null; })
     .then(function (data) {
       info = data;
+      var signCard = document.getElementById("sign-card");
+      signCard.open = !(info && info.signed);
+      document.getElementById("sign-summary").textContent =
+        info && info.signed ? "Sign again with a different certificate" : "Sign with your certificate";
       if (info) {
         document.getElementById("version").textContent =
           "Version " + info.version + " (" + info.build + ")" + (info.signed ? " · " + info.profileKind : "");

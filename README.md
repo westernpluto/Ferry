@@ -91,36 +91,44 @@ The detail screen flags:
 
 ## Installing the app itself from GitHub Pages (no Mac needed)
 
-The `Install page` workflow (`.github/workflows/pages.yml`) builds the app, signs it on GitHub's Mac
-runner with Apple's own `codesign`, and publishes an install page. You just open it in Safari.
+The `Install page` workflow (`.github/workflows/pages.yml`) publishes an install page for Ferry on
+GitHub Pages. You upload your certificate and profile on that page, GitHub builds and signs the app on
+its Mac runner with Apple's own `codesign`, and you install it from the same page in Safari.
 
-1. **Turn on Pages:** repository Settings › Pages › Source: **GitHub Actions**.
-2. **Add secrets** (Settings › Secrets and variables › Actions › New repository secret):
+**Once:** turn on Pages in the repository's Settings › Pages › Source: **GitHub Actions**, then run the
+workflow (Actions › Install page › Run workflow) so the page exists.
 
-   | Secret | Value |
-   | --- | --- |
-   | `SIGNING_CERTIFICATE_P12` | your `.p12`, base64-encoded (`base64 -i cert.p12`) |
-   | `SIGNING_CERTIFICATE_PASSWORD` | its password |
-   | `PROVISIONING_PROFILE` | your `.mobileprovision`, base64-encoded |
+**Then, on the page** (`https://<user>.github.io/<repo>/`), open **Sign with your certificate** and:
 
-   The profile needs to cover the app's bundle ID and list your iPhone. With a wildcard profile
-   (`com.you.*`) the app is signed as `com.you.ferry`. To choose the ID yourself, add a
-   repository **variable** `APP_BUNDLE_ID`.
-3. **Run the workflow** (Actions › Install page › Run workflow, or push to the default branch).
-4. On the iPhone, open `https://<user>.github.io/<repo>/` in Safari and tap **Install**.
+1. Pick your **.p12** and type its password.
+2. Pick your **.mobileprovision**. The page reads it and shows the App ID, type, device count and expiry.
+   Expired or App Store profiles are rejected before anything is sent. With a wildcard profile
+   (`com.you.*`) the app is signed as `com.you.ferry`, or you can type a bundle ID.
+3. Paste a **GitHub token**. Create a [fine-grained token](https://github.com/settings/personal-access-tokens/new)
+   limited to this repository, with **Actions** and **Secrets** set to *Read and write*. A short
+   expiry is fine. It's only used in that tab and never saved.
+4. Tap **Sign & Publish**. The page encrypts the files in the browser (libsodium sealed boxes, as GitHub
+   requires), saves them as the repository's secrets, starts the build and follows it. When the signed
+   build is live (about 5–10 minutes), the page reloads and the **Install** button is ready.
 
-The page is plain static files: no server code and no outside scripts or fonts. It's cached by a
-service worker, so it opens without a connection and can be added to the Home Screen. Tapping
-Install still needs internet, because iOS downloads the app itself. Once the app is installed,
-everything in it works offline: signing, the HTTPS certificate and installing your apps.
+Your files only go to GitHub, encrypted. Secrets can't be read back, even by you, and the build uses them
+in a temporary keychain that's deleted afterwards. To use a different certificate later, use
+**Sign again with a different certificate** on the page. You can still add the secrets by hand
+(`SIGNING_CERTIFICATE_P12`, `SIGNING_CERTIFICATE_PASSWORD`, `PROVISIONING_PROFILE`, base64 for the files)
+if you prefer.
+
+The page is plain static files: no server code and no outside scripts or fonts (TweetNaCl, public domain,
+is bundled for the encryption). It's cached by a service worker, so it opens without a connection and
+can be added to the Home Screen. Signing and installing need internet, because GitHub builds the app and
+iOS downloads it itself. Once Ferry is installed, everything in it works offline.
 
 **Privacy:** GitHub Pages sites are public, even for private repositories (unless you're on GitHub
 Enterprise with private Pages). The signed IPA contains your provisioning profile, which lists your
 team name and the UDIDs of the devices in it. The page doesn't show them, but anyone with the link
 can download the IPA. Only devices in the profile can run it. The page asks search engines not to index it.
 
-Without the secrets, the page still publishes, offering only the unsigned build. You can re-sign that
-build inside the app later to update it.
+Until you sign, the page offers only the unsigned build, which you can re-sign inside Ferry later
+to update it.
 
 ## Building
 
@@ -197,6 +205,6 @@ Packages/ZSignKit/        zsign-based signer (C++/OpenSSL) with a Swift API
 FerryTests/               Unit tests for parsing, validation, signing plans, manifest and HTTP handling
 scripts/make-local-cert.sh
 scripts/ci_sign_app.sh, ci_profile.py, build_site.py   CI signing and the install page
-site/                     Static, offline-capable install page (GitHub Pages)
+site/                     Static, offline-capable install page (GitHub Pages) with in-browser upload
 project.yml               XcodeGen spec
 ```

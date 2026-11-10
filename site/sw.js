@@ -1,7 +1,8 @@
 // Keeps the install page available offline. The IPA and manifest are never cached:
 // iOS's installer downloads them itself, outside the browser.
-const CACHE = "watch-installer-__BUILD_ID__";
-const SHELL = ["./", "index.html", "app.webmanifest", "icon-180.png", "icon-512.png", "info.json"];
+const CACHE = "ferry-__BUILD_ID__";
+const SHELL = ["./", "index.html", "app.webmanifest", "icon-180.png", "icon-512.png", "info.json",
+  "sealedbox.js", "setup.js", "vendor/nacl-fast.min.js"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

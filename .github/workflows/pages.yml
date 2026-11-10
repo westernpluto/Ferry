@@ -1,19 +1,25 @@
 name: Install page
 
-# Builds the app, signs it with your certificate and profile (repository secrets),
-# and publishes an install page on GitHub Pages. Open the page in Safari on the
-# iPhone and tap Install.
+# Builds the app, signs it with your certificate and profile, and publishes an
+# install page on GitHub Pages. Open the page in Safari on the iPhone and tap Install.
 #
-# Secrets (Settings › Secrets and variables › Actions):
-#   SIGNING_CERTIFICATE_P12        base64 of your .p12   (base64 -i cert.p12 | pbcopy)
+# The easy way to provide the certificate and profile is the page itself
+# ("Sign with your certificate"): it encrypts them in the browser, saves them as
+# the secrets below and starts this workflow. They can also be added by hand in
+# Settings › Secrets and variables › Actions:
+#   SIGNING_CERTIFICATE_P12        base64 of your .p12
 #   SIGNING_CERTIFICATE_PASSWORD   the .p12 password
 #   PROVISIONING_PROFILE           base64 of your .mobileprovision
-# Optional repository variable:
-#   APP_BUNDLE_ID                  bundle ID to sign as (must match the profile)
+# Bundle ID: the `bundle_id` input, or the repository variable APP_BUNDLE_ID.
 
 on:
   push:
   workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: Bundle ID to sign as (optional; must be covered by the profile)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -80,7 +86,7 @@ jobs:
           SIGNING_CERTIFICATE_P12: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
           SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
-          APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+          APP_BUNDLE_ID: ${{ inputs.bundle_id || vars.APP_BUNDLE_ID }}
         run: scripts/ci_sign_app.sh "$APP" Ferry.ipa signing-info.json
 
       - name: No signing secrets
