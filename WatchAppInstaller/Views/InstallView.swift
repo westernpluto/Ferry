@@ -11,9 +11,10 @@ struct InstallView: View {
             List {
                 Section {
                     status
+                        .padding(.vertical, 8)
                 }
 
-                if !installer.exportedFiles.isEmpty {
+                if installer.phase == .readyToUpload || !installer.exportedFiles.isEmpty {
                     Section {
                         ShareLink(items: installer.exportedFiles) {
                             Label("Share manifest.plist and IPA", systemImage: "square.and.arrow.up")
@@ -21,45 +22,39 @@ struct InstallView: View {
                         Button {
                             installer.openRemoteInstallLink()
                         } label: {
-                            Label("Install from my server", systemImage: "arrow.down.app")
+                            Label("Install from My Server", systemImage: "arrow.down.circle")
                         }
                         .disabled(installer.remoteInstallURL == nil)
                     } header: {
-                        Text("Step 1: upload · Step 2: install")
+                        Text("Upload, then install")
                     } footer: {
-                        Text("Upload both files to the folder at your base URL, then tap Install from my server.")
+                        Text("Upload both files to the address in Settings › Install Method, then tap Install from My Server.")
                     }
                 }
 
-                Section("After iOS installs the app") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("watchOS installs the watch app automatically if Automatic App Install is turned on in the Watch app. If it isn't:")
-                        Text("1. Open the Watch app on your iPhone.")
-                        Text("2. Go to My Watch and scroll to Available Apps.")
-                        Text("3. Tap Install next to \(package.title).")
-                    }
-                    .font(.callout)
-                    Button {
-                        installer.openWatchApp()
-                    } label: {
-                        Label("Open the Watch app", systemImage: "applewatch")
+                if !package.watchApps.isEmpty {
+                    Section("Apple Watch") {
+                        Text("After the iPhone app installs, the watch app installs automatically if Automatic App Install is on. Otherwise, open the Watch app › My Watch › Available Apps and tap Install.")
+                            .font(.callout)
+                        Button {
+                            installer.openWatchApp()
+                        } label: {
+                            Label("Open the Watch App", systemImage: "applewatch")
+                        }
                     }
                 }
 
                 if !installer.log.isEmpty {
                     Section("Activity") {
                         ForEach(installer.log) { line in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(line.text).font(.caption)
-                                Text(line.date.formatted(date: .omitted, time: .standard))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text(line.text)
+                                .font(.caption)
+                                .textSelection(.enabled)
                         }
                     }
                 }
             }
-            .navigationTitle("Install")
+            .navigationTitle(package.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -67,32 +62,50 @@ struct InstallView: View {
                 }
             }
         }
+        .presentationDetents([.medium, .large])
     }
 
     @ViewBuilder
     private var status: some View {
         switch installer.phase {
         case .idle:
-            if installer.exportedFiles.isEmpty {
-                Label("Ready", systemImage: "circle")
-            } else {
-                Label("Files ready to upload", systemImage: "doc.on.doc")
-            }
+            Label("Getting ready…", systemImage: "hourglass")
+        case .signing:
+            progressRow("Signing…", detail: installer.detail)
         case .serving:
-            HStack { ProgressView(); Text("Starting server…") }
+            progressRow("Starting…", detail: nil)
         case .waitingForInstaller:
-            HStack { ProgressView(); Text("Waiting for iOS to download the app…") }
+            progressRow("Waiting for iOS…", detail: "Tap Install if iOS asks.")
         case .transferring(let fraction):
-            VStack(alignment: .leading) {
-                Text("Sending the app to iOS…")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Installing…").font(.headline)
                 ProgressView(value: fraction)
             }
+        case .readyToUpload:
+            Label("Ready to upload", systemImage: "icloud.and.arrow.up")
+                .font(.headline)
         case .handedOff:
-            Label("Handed off to iOS. Check your Home Screen and Apple Watch.", systemImage: "checkmark.circle.fill")
+            Label("Installing on your iPhone. Check the Home Screen.", systemImage: "checkmark.circle.fill")
+                .font(.headline)
                 .foregroundStyle(.green)
         case .failed(let message):
             Label(message, systemImage: "xmark.octagon.fill")
                 .foregroundStyle(.red)
+        }
+    }
+
+    private func progressRow(_ title: String, detail: String?) -> some View {
+        HStack(spacing: 12) {
+            ProgressView()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                if let detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
         }
     }
 }

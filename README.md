@@ -1,9 +1,16 @@
 # Watch App Installer
 
-An iOS app that installs **signed watchOS apps** onto your iPhone's paired Apple Watch.
+An iOS app that signs and installs your own apps, including **watchOS apps**, onto your iPhone
+and its paired Apple Watch.
 
-You import an `.ipa` (from Xcode, a colleague, or your CI). The app checks that the watchOS app inside it is
-signed for direct installation, then hands it to iOS. iOS installs it on the iPhone and watchOS installs it on the watch.
+1. Once: add your signing certificate (`.p12`) and provisioning profiles.
+2. Add an `.ipa` (from Xcode, CI or a colleague).
+3. Tap **Sign & Install**. The app re-signs every bundle with your certificate, then iOS installs
+   the iPhone app and watchOS installs the watch app.
+
+Apps that are already signed for your devices can be installed without signing.
+The layout adapts to the iPhone Duo: folded it's a single list, unfolded the app list and the
+selected app sit side by side.
 
 ## How it works (and why it works this way)
 
@@ -33,20 +40,49 @@ So this app:
 | Ad Hoc profile listing **both** your iPhone and Apple Watch UDIDs | ✅ |
 | Development profile listing both devices | ✅ |
 | Enterprise (in-house) profile | ✅ (only if the enterprise certificate is trusted on the device) |
-| App Store / TestFlight distribution | ❌ Only installable from the App Store or TestFlight |
-| Unsigned, or a bare watchOS `.app` with no iOS container | ❌ |
+| App Store / TestFlight distribution, unsigned, or signed by someone else | ✅ after **Sign & Install** with your certificate (see below) |
+| Apps downloaded from the App Store (FairPlay-encrypted) | ❌ Can't be re-signed; the binary is encrypted |
+| A bare watchOS `.app` with no iOS container | ❌ |
 
 **Watch-only apps** work too: when you archive a watch-only app, Xcode wraps it in an iOS "stub"
 container app. Export that archive (Ad Hoc / Development) and import the resulting IPA.
 
-This app **does not sign or re-sign** anything. Signing requires your Apple Developer certificate
-and a profile that includes your devices. Do that in Xcode (or `codesign`) before importing.
+## Signing on the iPhone
+
+Open **Settings › Signing** and add:
+
+| File | Where to get it |
+| --- | --- |
+| Your certificate as a **`.p12`** + its password | Keychain Access on a Mac › right-click your *Apple Development* or *Apple Distribution* certificate (it must show a private key) › Export |
+| One **`.mobileprovision`** per bundle ID | developer.apple.com › Profiles, or Xcode. Needed for the iPhone app (`com.you.app`), the watch app (`com.you.app.watchkitapp`), and each extension (widgets, complications, notifications, …). A **wildcard** profile (`com.you.*`) covers all of them if the app uses no special capabilities |
+
+Each profile must include your certificate and, for Development and Ad Hoc, your iPhone's and
+Apple Watch's UDIDs. Register the devices first, then regenerate the profiles.
+
+The app matches each bundle in the IPA to the most specific profile (exact App ID beats wildcard),
+skips expired/App Store profiles and profiles that don't include your certificate, and shows the
+result per bundle before you install. Entitlements come from each bundle's profile, made concrete
+the way Xcode does (`TEAMID.*` → `TEAMID.com.you.app.watchkitapp`).
+
+Signing uses [zsign](https://github.com/zhlynn/zsign) (MIT) compiled into the app, with OpenSSL.
+See `Packages/ZSignKit/README.md` for what was changed. The `.p12` is stored in the Keychain on
+this iPhone only. During signing the key is written to a temporary, file-protected folder and
+deleted straight afterwards.
+
+Things signing can't change:
+
+- **Bundle IDs.** If you sign under a different team, you need profiles for the IPA's existing bundle IDs.
+- **App Store downloads.** These are encrypted and won't launch after re-signing. Use your own builds.
+- **Free Apple ID accounts.** No Ad Hoc profiles; Development profiles last 7 days.
+- **Developer Mode.** Development-signed apps need it on both the iPhone and the watch
+  (Settings › Privacy & Security › Developer Mode).
 
 ### Checks
 
 The detail screen flags:
 
-- no watch app in the IPA, or a raw watchOS binary at the top level
+- no watch app in the IPA (warning only), or a raw watchOS binary at the top level
+- watch apps that need their iPhone app (not marked `WKRunsIndependentlyOfCompanionApp`)
 - missing code signature or provisioning profile (on the iOS app or any watch app)
 - App Store profiles, expired profiles, or profiles that expire within 7 days
 - watch app bundle IDs that don't start with the iOS app's bundle ID, or a `WKCompanionAppBundleIdentifier` mismatch
@@ -55,7 +91,8 @@ The detail screen flags:
 
 ## Building
 
-Requirements: Xcode 15 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen), iOS 16+ device.
+Requirements: **Xcode 27.1 or later** (the iOS 27.1 SDK makes the app fill both iPhone Duo displays),
+[XcodeGen](https://github.com/yonaskolb/XcodeGen), an iOS 16+ device.
 
 ```sh
 brew install xcodegen
@@ -64,10 +101,13 @@ open WatchAppInstaller.xcodeproj
 ```
 
 Select your team under *Signing & Capabilities*, change the bundle ID if necessary, and run it on your iPhone.
-The only dependency is [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) (Swift Package Manager), which reads IPAs.
+Dependencies (Swift Package Manager): [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) for reading IPAs,
+and the local `Packages/ZSignKit` (zsign + [OpenSSL](https://github.com/krzyzanowskim/OpenSSL-Package)) for signing.
 
-CI (`.github/workflows/build.yml`) generates the project, runs the unit tests in the simulator and
-builds an unsigned IPA artifact.
+CI (`.github/workflows/build.yml`) runs on GitHub's `xcode-27` runner (macOS 27, Apple silicon) with
+Xcode 27.1. It generates the project, runs the unit tests on the **iPhone Duo** simulator and builds
+an unsigned IPA artifact. GitHub names these images after the Xcode version, so there's no
+`macos-27.1` label. The step log shows the exact macOS build.
 
 ## Setting up "On this iPhone" mode
 
@@ -82,7 +122,7 @@ scripts/make-local-cert.sh out mypass # custom folder and .p12 password
 1. Send `local-cert/rootCA.mobileconfig` to the iPhone (AirDrop, Files or Mail) and install it in
    **Settings › General › VPN & Device Management**.
 2. Turn on full trust in **Settings › General › About › Certificate Trust Settings**.
-3. In the app, open **Settings › Import .p12 certificate…**, choose `server.p12` and enter its password
+3. In the app, open **Settings › Install Method › Add server.p12…**, choose `server.p12` and enter its password
    (default `watchinstaller`).
 
 The root certificate has X.509 *name constraints* that limit it to `localhost`, `127.0.0.1` and `::1`, so it
@@ -114,9 +154,11 @@ The server needs a publicly trusted certificate (Let's Encrypt is fine).
 WatchAppInstaller/
   App/       App entry point
   Core/      IPA inspection, validation, manifest, HTTPS server, Keychain, install flow
+  Core/Signing/  profile matching, entitlements, certificate/profile storage, signing
   Models/    BundleInfo, AppPackage, ProvisioningProfile
   Views/     SwiftUI screens
-WatchAppInstallerTests/   Unit tests for parsing, validation, manifest and HTTP handling
+Packages/ZSignKit/        zsign-based signer (C++/OpenSSL) with a Swift API
+WatchAppInstallerTests/   Unit tests for parsing, validation, signing plans, manifest and HTTP handling
 scripts/make-local-cert.sh
 project.yml               XcodeGen spec
 ```

@@ -7,9 +7,24 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    # GitHub names macOS images after their Xcode version. `xcode-27` is the macOS 27
+    # image (Apple silicon) with Xcode 27.x and the iPhone Duo simulator.
+    runs-on: xcode-27
+    env:
+      XCODE_APP: /Applications/Xcode_27.1.app
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 27.1
+        run: |
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+          MACOS=$(sw_vers -productVersion)
+          echo "macOS $MACOS"
+          # The image is refreshed weekly; flag it if it's still on an older macOS 27 build.
+          if [ "$(printf '%s\n' 27.1 "$MACOS" | sort -V | head -1)" != "27.1" ]; then
+            echo "::notice::Runner is on macOS $MACOS (older than 27.1). Xcode 27.1 and the iOS 27.1 SDK are what iPhone Duo builds need."
+          fi
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -17,22 +32,26 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
-      - name: Pick a simulator
+      - name: Pick the iPhone Duo simulator
         id: sim
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
           devices = json.load(sys.stdin)["devices"]
-          for runtime, items in sorted(devices.items(), reverse=True):
-              if "iOS" not in runtime:
-                  continue
-              for d in items:
-                  if d["name"].startswith("iPhone"):
-                      print(d["udid"]); sys.exit(0)
+          ios = sorted((r for r in devices if "iOS" in r), reverse=True)
+          for wanted in ("iPhone Duo", "iPhone"):
+              for runtime in ios:
+                  for d in devices[runtime]:
+                      name = d["name"]
+                      if name.startswith(wanted):
+                          print(d["udid"])
+                          print("Using", name, runtime, file=sys.stderr)
+                          sys.exit(0)
+          sys.exit("No iPhone simulator found")
           ')
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
-      - name: Build and test
+      - name: Test on simulator
         run: |
           xcodebuild test \
             -project WatchAppInstaller.xcodeproj \
@@ -46,12 +65,12 @@ jobs:
             -project WatchAppInstaller.xcodeproj \
             -scheme WatchAppInstaller \
             -configuration Release \
-            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/WatchAppInstaller.app Payload/
-          zip -qr WatchAppInstaller-unsigned.ipa Payload
+          zip -qry WatchAppInstaller-unsigned.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:

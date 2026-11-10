@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// A decoded `embedded.mobileprovision`.
@@ -34,6 +35,36 @@ struct ProvisioningProfile: Codable, Hashable, Sendable {
     var provisionsAllDevices: Bool
     var getTaskAllow: Bool
     var platforms: [String]
+    /// SHA-256 fingerprints (lowercase hex) of the signing certificates the profile allows.
+    var certificateFingerprints: [String]?
+
+    /// The part of the application identifier before the bundle ID (normally the team ID).
+    var appIDPrefix: String? {
+        guard let applicationIdentifier, let dot = applicationIdentifier.firstIndex(of: ".") else { return teamIdentifiers.first }
+        return String(applicationIdentifier[..<dot])
+    }
+
+    /// The bundle ID pattern this profile covers, such as `com.example.app` or `com.example.*`.
+    var bundleIDPattern: String? {
+        guard let applicationIdentifier, let dot = applicationIdentifier.firstIndex(of: ".") else { return nil }
+        return String(applicationIdentifier[applicationIdentifier.index(after: dot)...])
+    }
+
+    var isWildcard: Bool { bundleIDPattern?.hasSuffix("*") ?? false }
+
+    /// Whether the profile's App ID covers the given bundle ID.
+    func covers(bundleIdentifier: String) -> Bool {
+        guard let pattern = bundleIDPattern else { return false }
+        if pattern.hasSuffix("*") {
+            return bundleIdentifier.hasPrefix(String(pattern.dropLast()))
+        }
+        return pattern == bundleIdentifier
+    }
+
+    func allowsCertificate(fingerprint: String) -> Bool {
+        guard let certificateFingerprints else { return true }
+        return certificateFingerprints.contains(fingerprint.lowercased())
+    }
 
     var kind: Kind {
         if provisionsAllDevices { return .enterprise }
@@ -73,7 +104,7 @@ struct ProvisioningProfile: Codable, Hashable, Sendable {
         }
     }
 
-    static func parse(_ data: Data) throws -> ProvisioningProfile {
+    static func propertyList(from data: Data) throws -> [String: Any] {
         guard
             let start = data.range(of: Data("<?xml".utf8)),
             let end = data.range(of: Data("</plist>".utf8), in: start.upperBound..<data.endIndex)
@@ -83,7 +114,20 @@ struct ProvisioningProfile: Codable, Hashable, Sendable {
         guard let plist = try? PropertyListSerialization.propertyList(from: xml, format: nil) as? [String: Any] else {
             throw ParseError.invalidPropertyList
         }
-        return ProvisioningProfile(plist: plist)
+        return plist
+    }
+
+    static func parse(_ data: Data) throws -> ProvisioningProfile {
+        ProvisioningProfile(plist: try propertyList(from: data))
+    }
+
+    /// The profile's `Entitlements` dictionary.
+    static func entitlements(from data: Data) throws -> [String: Any] {
+        try propertyList(from: data)["Entitlements"] as? [String: Any] ?? [:]
+    }
+
+    static func fingerprint(of certificateDER: Data) -> String {
+        SHA256.hash(data: certificateDER).map { String(format: "%02x", $0) }.joined()
     }
 
     init(plist: [String: Any]) {
@@ -100,5 +144,6 @@ struct ProvisioningProfile: Codable, Hashable, Sendable {
         provisionsAllDevices = plist["ProvisionsAllDevices"] as? Bool ?? false
         getTaskAllow = entitlements["get-task-allow"] as? Bool ?? false
         platforms = plist["Platform"] as? [String] ?? []
+        certificateFingerprints = (plist["DeveloperCertificates"] as? [Data])?.map(Self.fingerprint(of:))
     }
 }

@@ -3,6 +3,48 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var signing: SigningStore
+    @AppStorage(SettingsKey.mode) private var mode: InstallMode = .local
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    NavigationLink {
+                        SigningSettingsView()
+                    } label: {
+                        LabeledContent {
+                            Text(signing.isReady ? "Ready" : "Not set up")
+                        } label: {
+                            Label("Signing", systemImage: "signature")
+                        }
+                    }
+                    NavigationLink {
+                        InstallMethodView()
+                    } label: {
+                        LabeledContent {
+                            Text(mode.title)
+                        } label: {
+                            Label("Install Method", systemImage: "arrow.down.circle")
+                        }
+                    }
+                } footer: {
+                    Text("Signing lets you install your own builds with your certificate. Install Method controls how the app hands the IPA to iOS.")
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+/// How the IPA is served to iOS's installer.
+struct InstallMethodView: View {
     @AppStorage(SettingsKey.mode) private var mode: InstallMode = .local
     @AppStorage(SettingsKey.port) private var port = SettingsDefault.port
     @AppStorage(SettingsKey.host) private var host = SettingsDefault.host
@@ -15,43 +57,36 @@ struct SettingsView: View {
     @State private var message: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Picker("Serve the app from", selection: $mode) {
-                        ForEach(InstallMode.allCases) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                } footer: {
-                    Text("iOS only installs apps from HTTPS links with a trusted certificate. Choose whether this app serves the IPA itself, using your own certificate, or you upload it to a web server.")
+        Form {
+            Section {
+                Picker("Serve from", selection: $mode) {
+                    ForEach(InstallMode.allCases) { Text($0.title).tag($0) }
                 }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("iOS only installs from HTTPS links it trusts. Either this app serves the file itself with your own certificate, or you upload it to a web server.")
+            }
 
-                if mode == .local {
-                    localSection
-                } else {
-                    remoteSection
-                }
+            if mode == .local {
+                localSection
+            } else {
+                remoteSection
             }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .onAppear(perform: refreshCertificate)
-            .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.pkcs12]) { result in
-                guard case .success(let url) = result else { return }
-                let accessing = url.startAccessingSecurityScopedResource()
-                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                pendingP12 = try? Data(contentsOf: url)
-                if pendingP12 == nil { message = "Could not read that file." }
-            }
-            .alert("Certificate", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(message ?? "")
-            }
+        }
+        .navigationTitle("Install Method")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: refreshCertificate)
+        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.pkcs12]) { result in
+            guard case .success(let url) = result else { return }
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            pendingP12 = try? Data(contentsOf: url)
+            if pendingP12 == nil { message = "Couldn't read that file." }
+        }
+        .alert("HTTPS Certificate", isPresented: Binding(get: { message != nil }, set: { if !$0 { message = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(message ?? "")
         }
     }
 
@@ -60,24 +95,24 @@ struct SettingsView: View {
         Section {
             if let certificateSummary {
                 LabeledContent("Certificate", value: certificateSummary)
-                Button("Remove certificate", role: .destructive) {
+                Button("Remove Certificate", role: .destructive) {
                     TLSIdentityStore.clear()
                     refreshCertificate()
                 }
             } else {
-                Label("No certificate imported", systemImage: "exclamationmark.triangle")
+                Label("No HTTPS certificate yet", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             }
-            Button("Import .p12 certificate…") { showingImporter = true }
+            Button("Add server.p12…") { showingImporter = true }
 
             if pendingP12 != nil {
-                SecureField("Password for .p12", text: $password)
-                Button("Save certificate") { savePendingCertificate() }
+                SecureField("Password", text: $password)
+                Button("Save") { savePendingCertificate() }
             }
         } header: {
-            Text("TLS certificate")
+            Text("HTTPS certificate")
         } footer: {
-            Text("Create one with scripts/make-local-cert.sh. Install the generated profile, then turn on full trust for its root certificate in Settings › General › About › Certificate Trust Settings.")
+            Text("This isn't your signing certificate. Create it with scripts/make-local-cert.sh, install rootCA.mobileconfig, then turn on full trust in Settings › General › About › Certificate Trust Settings.")
         }
 
         Section {
@@ -87,9 +122,9 @@ struct SettingsView: View {
             TextField("Port", value: $port, format: .number.grouping(.never))
                 .keyboardType(.numberPad)
         } header: {
-            Text("Local server")
+            Text("Server")
         } footer: {
-            Text("The certificate must be valid for this host name. The server only accepts connections from this iPhone.")
+            Text("Only this iPhone can connect. The certificate must be valid for this host.")
         }
     }
 
@@ -100,9 +135,9 @@ struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         } header: {
-            Text("Web server")
+            Text("Web server folder")
         } footer: {
-            Text("The folder where you'll upload manifest.plist and the IPA. It must use HTTPS with a publicly trusted certificate.")
+            Text("Where you'll upload manifest.plist and the IPA. It needs a normal, publicly trusted HTTPS certificate.")
         }
     }
 
@@ -117,7 +152,7 @@ struct SettingsView: View {
             pendingP12 = nil
             password = ""
             refreshCertificate()
-            message = "Certificate saved."
+            message = "Saved."
         } catch {
             message = error.localizedDescription
         }

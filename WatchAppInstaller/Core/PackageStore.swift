@@ -46,7 +46,8 @@ final class PackageStore: ObservableObject {
                 importedAt: Date(),
                 fileSize: size,
                 container: result.container,
-                watchApps: result.watchApps
+                watchApps: result.watchApps,
+                extensions: result.extensions
             )
             packages.insert(package, at: 0)
             save()
@@ -56,8 +57,14 @@ final class PackageStore: ObservableObject {
         }
     }
 
+    /// Where the re-signed copy of a package is written.
+    func signedFileURL(for package: AppPackage) -> URL {
+        directory.appendingPathComponent("\(package.id.uuidString)-signed.ipa")
+    }
+
     func delete(_ package: AppPackage) {
         try? FileManager.default.removeItem(at: fileURL(for: package))
+        try? FileManager.default.removeItem(at: signedFileURL(for: package))
         packages.removeAll { $0.id == package.id }
         save()
     }

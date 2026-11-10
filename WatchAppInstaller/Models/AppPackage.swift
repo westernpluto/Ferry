@@ -57,12 +57,20 @@ struct AppPackage: Codable, Identifiable, Hashable {
     var fileSize: Int64
     var container: BundleInfo
     var watchApps: [BundleInfo]
+    /// App extensions anywhere in the IPA (`.appex`). Nil for packages imported by older versions.
+    var extensions: [BundleInfo]?
 
     var title: String { watchApps.first?.displayName ?? container.displayName }
+
+    /// Every bundle that needs its own provisioning profile when signing.
+    var signableBundles: [BundleInfo] { [container] + watchApps + (extensions ?? []) }
 
     var issues: [PackageIssue] { PackageValidator.validate(self) }
 
     var canInstall: Bool { !issues.contains { $0.severity == .error } }
+
+    /// Problems signing can't fix (for example, no watch app at all).
+    var structuralIssues: [PackageIssue] { PackageValidator.validate(self, includeSigning: false) }
 }
 
 struct PackageIssue: Hashable, Identifiable {
@@ -73,5 +81,7 @@ struct PackageIssue: Hashable, Identifiable {
 
     var severity: Severity
     var message: String
+    /// True when re-signing the app with your own certificate would resolve it.
+    var isSigning = false
     var id: String { "\(severity.rawValue)-\(message)" }
 }

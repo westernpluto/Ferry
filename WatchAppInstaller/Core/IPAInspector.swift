@@ -22,6 +22,7 @@ enum IPAInspector {
     struct Result: Sendable {
         var container: BundleInfo
         var watchApps: [BundleInfo]
+        var extensions: [BundleInfo]
     }
 
     static func inspect(url: URL) throws -> Result {
@@ -55,7 +56,23 @@ enum IPAInspector {
         })
 
         let watchApps = try watchRoots.sorted().map { try bundle(at: $0, archive: archive, paths: paths) }
-        return Result(container: container, watchApps: watchApps)
+        let extensions = try extensionRoots(in: paths, under: root).map { try bundle(at: $0, archive: archive, paths: paths) }
+        return Result(container: container, watchApps: watchApps, extensions: extensions)
+    }
+
+    /// Every `.appex` bundle folder below `root`, including ones inside watch apps.
+    static func extensionRoots(in paths: Set<String>, under root: String) -> [String] {
+        var roots = Set<String>()
+        for path in paths where path.hasPrefix(root) {
+            var prefix = ""
+            for component in path.split(separator: "/", omittingEmptySubsequences: false).dropLast() {
+                prefix += String(component) + "/"
+                if component.hasSuffix(".appex"), paths.contains(prefix + "Info.plist") {
+                    roots.insert(prefix)
+                }
+            }
+        }
+        return roots.sorted()
     }
 
     static func bundle(at root: String, archive: Archive, paths: Set<String>) throws -> BundleInfo {

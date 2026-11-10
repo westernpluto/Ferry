@@ -6,3 +6,6 @@ build/
 Payload/
 *.ipa
 local-cert/
+.build/
+.swiftpm/
+Package.resolved
