@@ -115,7 +115,7 @@ private struct ContentUnavailableHint: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "applewatch")
+            Image(systemName: "ferry.fill")
                 .font(.system(size: 52))
                 .foregroundStyle(.secondary)
             Text(isEmpty ? "Add an app" : "Select an app")
@@ -144,7 +144,7 @@ private struct PackageRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: package.watchApps.isEmpty ? "iphone" : "applewatch")
+            Image(systemName: "shippingbox.fill")
                 .font(.title2)
                 .frame(width: 36)
                 .foregroundStyle(.tint)

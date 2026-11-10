@@ -13,7 +13,7 @@
 set -euo pipefail
 
 OUT="${1:-local-cert}"
-PASSWORD="${2:-watchinstaller}"
+PASSWORD="${2:-ferry}"
 mkdir -p "$OUT"
 cd "$OUT"
 
@@ -24,8 +24,8 @@ distinguished_name = dn
 x509_extensions = v3_ca
 prompt = no
 [dn]
-CN = Watch App Installer Local Root
-O = Watch App Installer
+CN = Ferry Local Root
+O = Ferry
 [v3_ca]
 basicConstraints = critical, CA:TRUE, pathlen:0
 keyUsage = critical, keyCertSign, cRLSign
@@ -39,7 +39,7 @@ distinguished_name = dn
 prompt = no
 [dn]
 CN = localhost
-O = Watch App Installer
+O = Ferry
 [v3_server]
 basicConstraints = critical, CA:FALSE
 keyUsage = critical, digitalSignature, keyEncipherment
@@ -61,7 +61,7 @@ openssl x509 -req -in server.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateseria
 
 # iOS's PKCS#12 importer needs the older SHA1/3DES encryption.
 openssl pkcs12 -export -out server.p12 -inkey server.key -in server.pem -certfile rootCA.pem \
-  -name "Watch App Installer Local Server" -passout "pass:$PASSWORD" \
+  -name "Ferry Local Server" -passout "pass:$PASSWORD" \
   -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
 
 # Configuration profile that installs the root certificate.
@@ -77,16 +77,16 @@ cat > rootCA.mobileconfig <<EOF
     <dict>
       <key>PayloadCertificateFileName</key><string>rootCA.cer</string>
       <key>PayloadContent</key><data>${ROOT_B64}</data>
-      <key>PayloadDisplayName</key><string>Watch App Installer Local Root</string>
-      <key>PayloadIdentifier</key><string>com.example.WatchAppInstaller.root.$(uuid)</string>
+      <key>PayloadDisplayName</key><string>Ferry Local Root</string>
+      <key>PayloadIdentifier</key><string>com.example.Ferry.root.$(uuid)</string>
       <key>PayloadType</key><string>com.apple.security.root</string>
       <key>PayloadUUID</key><string>$(uuid)</string>
       <key>PayloadVersion</key><integer>1</integer>
     </dict>
   </array>
-  <key>PayloadDescription</key><string>Lets Watch App Installer serve apps over HTTPS on this iPhone (localhost only).</string>
-  <key>PayloadDisplayName</key><string>Watch App Installer Local Root</string>
-  <key>PayloadIdentifier</key><string>com.example.WatchAppInstaller.profile.$(uuid)</string>
+  <key>PayloadDescription</key><string>Lets Ferry serve apps over HTTPS on this iPhone (localhost only).</string>
+  <key>PayloadDisplayName</key><string>Ferry Local Root</string>
+  <key>PayloadIdentifier</key><string>com.example.Ferry.profile.$(uuid)</string>
   <key>PayloadType</key><string>Configuration</string>
   <key>PayloadUUID</key><string>$(uuid)</string>
   <key>PayloadVersion</key><integer>1</integer>

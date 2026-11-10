@@ -4,8 +4,8 @@ import ZSignKit
 
 /// Creates, stores and checks the HTTPS certificate for the local install server, on device.
 enum LocalCertificate {
-    static let rootVault = PKCS12Vault(service: "WatchAppInstaller.LocalRootCA", account: "root")
-    static let profileFileName = "WatchInstaller-LocalRoot.mobileconfig"
+    static let rootVault = PKCS12Vault(service: "Ferry.LocalRootCA", account: "root")
+    static let profileFileName = "Ferry-LocalRoot.mobileconfig"
     private static let createdKey = "localServerCertificateCreated"
     /// iOS rejects TLS certificates from user-trusted roots that are valid for more than 825 days.
     static let serverValidityDays = 800
@@ -51,17 +51,17 @@ enum LocalCertificate {
         let der = SecCertificateCopyData(root) as Data
         let profile: [String: Any] = [
             "PayloadContent": [[
-                "PayloadCertificateFileName": "WatchInstallerLocalRoot.cer",
+                "PayloadCertificateFileName": "FerryLocalRoot.cer",
                 "PayloadContent": der,
-                "PayloadDisplayName": "Watch App Installer Local Root",
-                "PayloadIdentifier": "com.example.WatchAppInstaller.root.\(UUID().uuidString)",
+                "PayloadDisplayName": "Ferry Local Root",
+                "PayloadIdentifier": "com.example.Ferry.root.\(UUID().uuidString)",
                 "PayloadType": "com.apple.security.root",
                 "PayloadUUID": UUID().uuidString,
                 "PayloadVersion": 1,
             ]],
-            "PayloadDescription": "Lets Watch App Installer serve apps over HTTPS on this iPhone. It only works for localhost and 127.0.0.1.",
-            "PayloadDisplayName": "Watch App Installer Local Root",
-            "PayloadIdentifier": "com.example.WatchAppInstaller.profile",
+            "PayloadDescription": "Lets Ferry serve apps over HTTPS on this iPhone. It only works for localhost and 127.0.0.1.",
+            "PayloadDisplayName": "Ferry Local Root",
+            "PayloadIdentifier": "com.example.Ferry.profile",
             "PayloadType": "Configuration",
             "PayloadUUID": UUID().uuidString,
             "PayloadVersion": 1,

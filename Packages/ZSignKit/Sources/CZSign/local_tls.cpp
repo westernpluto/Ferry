@@ -18,8 +18,8 @@
 
 namespace {
 
-const char *kRootName = "Watch App Installer Local Root";
-const char *kServerName = "Watch App Installer Local Server";
+const char *kRootName = "Ferry Local Root";
+const char *kServerName = "Ferry Local Server";
 
 void setError(char *buffer, int length, const std::string &message) {
     if (!buffer || length <= 0) return;
@@ -58,7 +58,7 @@ bool setRandomSerial(X509 *cert) {
 
 bool setName(X509_NAME *name, const char *commonName) {
     return X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_UTF8, (const unsigned char *)commonName, -1, -1, 0) == 1 &&
-           X509_NAME_add_entry_by_txt(name, "O", MBSTRING_UTF8, (const unsigned char *)"Watch App Installer", -1, -1, 0) == 1;
+           X509_NAME_add_entry_by_txt(name, "O", MBSTRING_UTF8, (const unsigned char *)"Ferry", -1, -1, 0) == 1;
 }
 
 bool addExtension(X509 *cert, X509 *issuer, int nid, const char *value) {

@@ -104,7 +104,7 @@ struct PackageDetailView: View {
 
     private var header: some View {
         HStack(spacing: 16) {
-            Image(systemName: package.watchApps.isEmpty ? "iphone" : "applewatch")
+            Image(systemName: "shippingbox.fill")
                 .font(.system(size: 40))
                 .foregroundStyle(.tint)
                 .frame(width: 56, height: 56)

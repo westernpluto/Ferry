@@ -60,19 +60,19 @@ jobs:
       - name: Build app
         run: |
           xcodebuild build \
-            -project WatchAppInstaller.xcodeproj \
-            -scheme WatchAppInstaller \
+            -project Ferry.xcodeproj \
+            -scheme Ferry \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
-          APP=build/Build/Products/Release-iphoneos/WatchAppInstaller.app
+          APP=build/Build/Products/Release-iphoneos/Ferry.app
           echo "APP=$APP" >> "$GITHUB_ENV"
           echo "APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" >> "$GITHUB_ENV"
           echo "APP_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" >> "$GITHUB_ENV"
           mkdir -p unsigned/Payload
           cp -R "$APP" unsigned/Payload/
-          (cd unsigned && zip -qry ../WatchInstaller-unsigned.ipa Payload)
+          (cd unsigned && zip -qry ../Ferry-unsigned.ipa Payload)
 
       - name: Sign app
         if: env.HAS_SIGNING == 'true'
@@ -81,7 +81,7 @@ jobs:
           SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
           PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
           APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
-        run: scripts/ci_sign_app.sh "$APP" WatchInstaller.ipa signing-info.json
+        run: scripts/ci_sign_app.sh "$APP" Ferry.ipa signing-info.json
 
       - name: No signing secrets
         if: env.HAS_SIGNING != 'true'
@@ -90,13 +90,13 @@ jobs:
       - name: Assemble site
         run: |
           ARGS=()
-          if [ -f WatchInstaller.ipa ]; then
-            ARGS+=(--signed-ipa WatchInstaller.ipa --signing-info signing-info.json)
+          if [ -f Ferry.ipa ]; then
+            ARGS+=(--signed-ipa Ferry.ipa --signing-info signing-info.json)
           fi
           python3 scripts/build_site.py _site \
             --base-url "${{ needs.check.outputs.base_url }}" \
             --version "$APP_VERSION" --build "$APP_BUILD" --commit "$GITHUB_SHA" \
-            --unsigned-ipa WatchInstaller-unsigned.ipa "${ARGS[@]}"
+            --unsigned-ipa Ferry-unsigned.ipa "${ARGS[@]}"
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -1,6 +1,6 @@
 # XcodeGen spec. Generate the Xcode project with:  xcodegen generate
 # Build with Xcode 27.1 or later (iOS 27.1 SDK) so the app fills both iPhone Duo displays.
-name: WatchAppInstaller
+name: Ferry
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
@@ -21,18 +21,18 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
 
 targets:
-  WatchAppInstaller:
+  Ferry:
     type: application
     platform: iOS
     sources:
-      - path: WatchAppInstaller
+      - path: Ferry
     dependencies:
       - package: ZIPFoundation
       - package: ZSignKit
     info:
-      path: WatchAppInstaller/Info.plist
+      path: Ferry/Info.plist
       properties:
-        CFBundleDisplayName: Watch Installer
+        CFBundleDisplayName: Ferry
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -73,29 +73,29 @@ targets:
                 - mobileprovision
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.WatchAppInstaller
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.Ferry
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
-        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
-  WatchAppInstallerTests:
+  FerryTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: WatchAppInstallerTests
+      - path: FerryTests
     dependencies:
-      - target: WatchAppInstaller
+      - target: Ferry
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.WatchAppInstallerTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.FerryTests
 
 schemes:
-  WatchAppInstaller:
+  Ferry:
     build:
       targets:
-        WatchAppInstaller: all
-        WatchAppInstallerTests: [test]
+        Ferry: all
+        FerryTests: [test]
     test:
       targets:
-        - WatchAppInstallerTests
+        - FerryTests

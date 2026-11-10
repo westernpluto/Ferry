@@ -39,7 +39,7 @@ struct InstallView: View {
                         Button {
                             installer.openWatchApp()
                         } label: {
-                            Label("Open the Watch App", systemImage: "applewatch")
+                            Label("Open the Watch App", systemImage: "arrow.up.forward.app")
                         }
                     }
                 }

@@ -4,7 +4,7 @@
 Usage: ci_profile.py PROFILE_PLIST ENTITLEMENTS_OUT INFO_JSON_OUT [BUNDLE_ID]
 
 - Chooses the bundle ID: BUNDLE_ID if given (must be covered by the profile), the
-  profile's App ID if it isn't a wildcard, or `<wildcard prefix>watchinstaller`.
+  profile's App ID if it isn't a wildcard, or `<wildcard prefix>ferry`.
 - Writes entitlements for that bundle ID, made concrete the way Xcode does.
 - Writes non-sensitive facts about the profile (no device IDs) as JSON.
 - Prints `KEY=value` lines for the workflow ($GITHUB_ENV).
@@ -15,7 +15,7 @@ import plistlib
 import shlex
 import sys
 
-DEFAULT_BUNDLE_ID = "com.example.WatchAppInstaller"
+DEFAULT_BUNDLE_ID = "com.example.Ferry"
 
 
 def fail(message):
@@ -50,7 +50,7 @@ def main():
         bundle_id = override
     elif pattern.endswith("*"):
         base = pattern[:-1]
-        bundle_id = f"{base}watchinstaller" if base else DEFAULT_BUNDLE_ID
+        bundle_id = f"{base}ferry" if base else DEFAULT_BUNDLE_ID
     else:
         bundle_id = pattern
 

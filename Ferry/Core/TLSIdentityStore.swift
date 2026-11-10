@@ -95,7 +95,7 @@ struct PKCS12Vault {
 
 /// The TLS identity used by the local HTTPS server.
 enum TLSIdentityStore {
-    private static let vault = PKCS12Vault(service: "WatchAppInstaller.TLSIdentity", account: "local-server")
+    private static let vault = PKCS12Vault(service: "Ferry.TLSIdentity", account: "local-server")
 
     @discardableResult
     static func save(p12: Data, password: String) throws -> SecIdentity {

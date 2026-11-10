@@ -1,6 +1,6 @@
 import XCTest
 import Security
-@testable import WatchAppInstaller
+@testable import Ferry
 
 final class ProvisioningProfileTests: XCTestCase {
     func testParsesPlistEmbeddedInCMSBlob() throws {

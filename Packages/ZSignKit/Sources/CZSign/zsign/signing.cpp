@@ -112,7 +112,7 @@ bool ZSign::SlotParseRequirements(uint8_t* pSlotBase, CS_BlobIndex* pbi)
 		return false;
 	}
 
-#if !defined(_WIN32) && !defined(ZSIGN_IOS_APP) // [WatchAppInstaller patch]
+#if !defined(_WIN32) && !defined(ZSIGN_IOS_APP) // [Ferry patch]
 	if (ZFile::IsFileExists("/usr/bin/csreq")) {
 		string strTempFile;
 		ZUtil::StringFormatV(strTempFile, "/tmp/Requirements_%llu.blob", ZUtil::GetMicroSecond());

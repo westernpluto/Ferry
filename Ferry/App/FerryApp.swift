@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 @main
-struct WatchAppInstallerApp: App {
+struct FerryApp: App {
     @StateObject private var store = PackageStore()
     @StateObject private var signing = SigningStore()
     @StateObject private var installer = InstallCoordinator()

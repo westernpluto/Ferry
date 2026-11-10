@@ -141,11 +141,11 @@ struct InstallMethodView: View {
                         }
                         .font(.callout)
                     }
-                    Text("2. Open Settings › General › VPN & Device Management, tap “Watch App Installer Local Root” and install it.")
+                    Text("2. Open Settings › General › VPN & Device Management, tap “Ferry Local Root” and install it.")
                 } else {
                     Text("1. Install the profile for your certificate's root, e.g. rootCA.mobileconfig from scripts/make-local-cert.sh.")
                 }
-                Text("3. Open Settings › General › About › Certificate Trust Settings and turn on “Watch App Installer Local Root”.")
+                Text("3. Open Settings › General › About › Certificate Trust Settings and turn on “Ferry Local Root”.")
                 Button("Check Again", action: refreshCertificate)
             } header: {
                 Text("Trust it (once)")

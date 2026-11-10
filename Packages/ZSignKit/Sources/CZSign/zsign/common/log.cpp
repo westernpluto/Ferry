@@ -3,7 +3,7 @@
 
 int ZLog::g_nLogLevel = ZLog::E_INFO;
 
-// [WatchAppInstaller patch] Optional hook that receives every log line instead of stdout.
+// [Ferry patch] Optional hook that receives every log line instead of stdout.
 void (*g_zsign_log_hook)(int nColor, const char* szLog) = NULL;
 
 void ZLog::_Print(const char* szLog, int nColor)
@@ -12,7 +12,7 @@ void ZLog::_Print(const char* szLog, int nColor)
 		return;
 	}
 
-	if (NULL != g_zsign_log_hook) { // [WatchAppInstaller patch]
+	if (NULL != g_zsign_log_hook) { // [Ferry patch]
 		g_zsign_log_hook(nColor, szLog);
 		return;
 	}

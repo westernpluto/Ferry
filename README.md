@@ -1,7 +1,7 @@
-# Watch App Installer
+# Ferry
 
-An iOS app that signs and installs your own apps, including **watchOS apps**, onto your iPhone
-and its paired Apple Watch.
+Ferry signs and installs your own iOS apps on your iPhone, without a Mac. Apple Watch apps inside
+them install on your paired watch too.
 
 1. Once: add your signing certificate (`.p12`) and provisioning profiles.
 2. Add an `.ipa` (from Xcode, CI or a colleague).
@@ -14,8 +14,8 @@ selected app sit side by side.
 
 ## How it works (and why it works this way)
 
-iOS has **no public API that lets an app install software on an Apple Watch**, and there is no
-supported way to talk to the watch's installer directly. What iOS *does* support is
+iOS has no public API that lets an app install other apps directly, and none that installs
+software on an Apple Watch. What iOS *does* support is
 **over-the-air (OTA) installation**: opening an `itms-services://?action=download-manifest&url=…`
 link makes iOS download and install a signed IPA. When that IPA contains a watch app in
 `Payload/<App>.app/Watch/`, watchOS installs it on the paired watch like any other companion app.
@@ -104,7 +104,7 @@ runner with Apple's own `codesign`, and publishes an install page. You just open
    | `PROVISIONING_PROFILE` | your `.mobileprovision`, base64-encoded |
 
    The profile needs to cover the app's bundle ID and list your iPhone. With a wildcard profile
-   (`com.you.*`) the app is signed as `com.you.watchinstaller`. To choose the ID yourself, add a
+   (`com.you.*`) the app is signed as `com.you.ferry`. To choose the ID yourself, add a
    repository **variable** `APP_BUNDLE_ID`.
 3. **Run the workflow** (Actions › Install page › Run workflow, or push to the default branch).
 4. On the iPhone, open `https://<user>.github.io/<repo>/` in Safari and tap **Install**.
@@ -130,7 +130,7 @@ Requirements: **Xcode 27.1 or later** (the iOS 27.1 SDK makes the app fill both 
 ```sh
 brew install xcodegen
 xcodegen generate
-open WatchAppInstaller.xcodeproj
+open Ferry.xcodeproj
 ```
 
 Select your team under *Signing & Capabilities*, change the bundle ID if necessary, and run it on your iPhone.
@@ -149,7 +149,7 @@ one. The app makes it for you. Open **Settings › Install Method** and:
 
 1. Tap **Generate Certificate**. This creates a root certificate and an HTTPS server certificate on
    the iPhone, both stored in its Keychain.
-2. Tap **Download Profile in Safari**, allow the download, then install "Watch App Installer Local Root"
+2. Tap **Download Profile in Safari**, allow the download, then install "Ferry Local Root"
    in **Settings › General › VPN & Device Management**. (If Safari isn't your default browser, use
    **Save Profile to Files** and tap the file in the Files app instead.)
 3. Turn on full trust for it in **Settings › General › About › Certificate Trust Settings**.
@@ -187,14 +187,14 @@ The server needs a publicly trusted certificate (Let's Encrypt is fine).
 ## Project layout
 
 ```
-WatchAppInstaller/
+Ferry/
   App/       App entry point
   Core/      IPA inspection, validation, manifest, HTTPS server, Keychain, install flow
   Core/Signing/  profile matching, entitlements, certificate/profile storage, signing
   Models/    BundleInfo, AppPackage, ProvisioningProfile
   Views/     SwiftUI screens
 Packages/ZSignKit/        zsign-based signer (C++/OpenSSL) with a Swift API
-WatchAppInstallerTests/   Unit tests for parsing, validation, signing plans, manifest and HTTP handling
+FerryTests/               Unit tests for parsing, validation, signing plans, manifest and HTTP handling
 scripts/make-local-cert.sh
 scripts/ci_sign_app.sh, ci_profile.py, build_site.py   CI signing and the install page
 site/                     Static, offline-capable install page (GitHub Pages)

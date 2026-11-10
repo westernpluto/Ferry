@@ -1,5 +1,5 @@
 // swift-tools-version:5.9
-// On-device IPA signing for Watch App Installer, built on zsign (MIT, see LICENSE-zsign).
+// On-device IPA signing for Ferry, built on zsign (MIT, see LICENSE-zsign).
 
 import PackageDescription
 

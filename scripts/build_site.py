@@ -10,45 +10,16 @@ build) manifest.plist with an absolute IPA URL, which iOS requires.
 import argparse
 import datetime
 import json
-import math
 import os
 import plistlib
 import shutil
-import struct
-import zlib
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ferry_icon import png  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TITLE = "Watch Installer"
-
-
-def png(size):
-    """A simple app icon: blue gradient with a white watch outline."""
-    rows = []
-    c = size / 2
-    body_w, body_h, radius = size * 0.36, size * 0.44, size * 0.1
-    strap_w = size * 0.22
-    for y in range(size):
-        row = bytearray([0])
-        for x in range(size):
-            t = y / size
-            r, g, b = int(20 + 30 * t), int(110 + 40 * t), int(230 - 20 * t)
-            dx, dy = abs(x + 0.5 - c), abs(y + 0.5 - c)
-            # Rounded-rectangle watch body.
-            qx, qy = max(dx - (body_w / 2 - radius), 0), max(dy - (body_h / 2 - radius), 0)
-            dist = math.hypot(qx, qy) - radius
-            in_strap = dx < strap_w / 2 and dy >= body_h / 2 - 1
-            if -size * 0.035 < dist <= 0 or (in_strap and dist > 0):
-                r, g, b = 255, 255, 255
-            row += bytes((r, g, b))
-        rows.append(bytes(row))
-
-    def chunk(kind, data):
-        body = kind + data
-        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
-
-    header = struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
-            + chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b""))
+TITLE = "Ferry"
 
 
 def main():
@@ -87,16 +58,16 @@ def main():
     }
 
     if args.unsigned_ipa and os.path.exists(args.unsigned_ipa):
-        shutil.copy(args.unsigned_ipa, os.path.join(args.out, "WatchInstaller-unsigned.ipa"))
+        shutil.copy(args.unsigned_ipa, os.path.join(args.out, "Ferry-unsigned.ipa"))
         info["hasUnsigned"] = True
 
     if args.signed_ipa and os.path.exists(args.signed_ipa):
         with open(args.signing_info) as f:
             signing = json.load(f)
-        shutil.copy(args.signed_ipa, os.path.join(args.out, "WatchInstaller.ipa"))
+        shutil.copy(args.signed_ipa, os.path.join(args.out, "Ferry.ipa"))
         manifest = {
             "items": [{
-                "assets": [{"kind": "software-package", "url": base + "WatchInstaller.ipa"}],
+                "assets": [{"kind": "software-package", "url": base + "Ferry.ipa"}],
                 "metadata": {
                     "bundle-identifier": signing["bundleIdentifier"],
                     "bundle-version": args.version,

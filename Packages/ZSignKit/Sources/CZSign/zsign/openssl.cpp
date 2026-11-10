@@ -868,7 +868,7 @@ bool ZSignAsset::Init(
 		}
 	}
 
-#ifdef ZSIGN_IOS_APP // [WatchAppInstaller patch]
+#ifdef ZSIGN_IOS_APP // [Ferry patch]
 	if (!strEntitleFile.empty() && !m_strEntitleData.empty()) {
 		jvalue jvEntitlements;
 		if (jvEntitlements.read_plist(m_strEntitleData) && jvEntitlements.has("application-identifier")) {

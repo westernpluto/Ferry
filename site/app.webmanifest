@@ -1,6 +1,6 @@
 {
-  "name": "Watch Installer",
-  "short_name": "Watch Installer",
+  "name": "Ferry",
+  "short_name": "Ferry",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -54,25 +54,25 @@ jobs:
       - name: Test on simulator
         run: |
           xcodebuild test \
-            -project WatchAppInstaller.xcodeproj \
-            -scheme WatchAppInstaller \
+            -project Ferry.xcodeproj \
+            -scheme Ferry \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Build unsigned IPA
         run: |
           xcodebuild build \
-            -project WatchAppInstaller.xcodeproj \
-            -scheme WatchAppInstaller \
+            -project Ferry.xcodeproj \
+            -scheme Ferry \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/WatchAppInstaller.app Payload/
-          zip -qry WatchAppInstaller-unsigned.ipa Payload
+          cp -R build/Build/Products/Release-iphoneos/Ferry.app Payload/
+          zip -qry Ferry-unsigned.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: WatchAppInstaller-unsigned
-          path: WatchAppInstaller-unsigned.ipa
+          name: Ferry-unsigned
+          path: Ferry-unsigned.ipa

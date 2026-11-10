@@ -15,7 +15,7 @@ final class SigningStore: ObservableObject {
         didSet { UserDefaults.standard.set(signBeforeInstall, forKey: Self.signKey) }
     }
 
-    nonisolated static let vault = PKCS12Vault(service: "WatchAppInstaller.SigningIdentity", account: "developer")
+    nonisolated static let vault = PKCS12Vault(service: "Ferry.SigningIdentity", account: "developer")
     private static let signKey = "signBeforeInstall"
 
     let directory: URL

@@ -1,6 +1,6 @@
 # ZSignKit
 
-On-device IPA signing for Watch App Installer. It wraps [zsign](https://github.com/zhlynn/zsign)
+On-device IPA signing for Ferry. It wraps [zsign](https://github.com/zhlynn/zsign)
 (MIT, see `LICENSE-zsign`) and links OpenSSL from
 [krzyzanowskim/OpenSSL-Package](https://github.com/krzyzanowskim/OpenSSL-Package) (Apache 2.0).
 
@@ -16,7 +16,7 @@ On-device IPA signing for Watch App Installer. It wraps [zsign](https://github.c
 
 ## Changes to zsign
 
-Each change is marked `[WatchAppInstaller patch]` in the source:
+Each change is marked `[Ferry patch]` in the source:
 
 1. `common/log.cpp`: an optional `g_zsign_log_hook` so log lines reach the app instead of stdout.
 2. `signing.cpp`: skip the `/usr/bin/csreq` + `popen` debug path when `ZSIGN_IOS_APP` is defined
