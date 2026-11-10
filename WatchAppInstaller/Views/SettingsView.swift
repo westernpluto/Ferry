@@ -50,7 +50,9 @@ struct InstallMethodView: View {
     @AppStorage(SettingsKey.host) private var host = SettingsDefault.host
     @AppStorage(SettingsKey.remoteBaseURL) private var remoteBaseURL = ""
 
-    @State private var certificateSummary: String?
+    @StateObject private var setup = LocalCertificateSetup()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var confirmingNewRoot = false
     @State private var showingImporter = false
     @State private var pendingP12: Data?
     @State private var password = ""
@@ -64,7 +66,7 @@ struct InstallMethodView: View {
                 }
                 .pickerStyle(.segmented)
             } footer: {
-                Text("iOS only installs from HTTPS links it trusts. Either this app serves the file itself with your own certificate, or you upload it to a web server.")
+                Text("iOS only installs from HTTPS links it trusts. Either this app serves the file itself, or you upload it to a web server.")
             }
 
             if mode == .local {
@@ -76,6 +78,21 @@ struct InstallMethodView: View {
         .navigationTitle("Install Method")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: refreshCertificate)
+        .onChange(of: scenePhase) { phase in
+            // Re-check trust when coming back from the Settings app.
+            if phase == .active { refreshCertificate() }
+        }
+        .onDisappear { setup.stopServing() }
+        .confirmationDialog("Create a new root certificate?", isPresented: $confirmingNewRoot, titleVisibility: .visible) {
+            Button("Create New Root", role: .destructive) { setup.generate(newRoot: true, host: host) }
+        } message: {
+            Text("You'll need to install and trust the new profile again. Remove the old one in Settings › General › VPN & Device Management.")
+        }
+        .onChange(of: setup.message) { newValue in
+            guard let newValue else { return }
+            message = newValue
+            setup.message = nil
+        }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.pkcs12]) { result in
             guard case .success(let url) = result else { return }
             let accessing = url.startAccessingSecurityScopedResource()
@@ -93,26 +110,85 @@ struct InstallMethodView: View {
     @ViewBuilder
     private var localSection: some View {
         Section {
-            if let certificateSummary {
-                LabeledContent("Certificate", value: certificateSummary)
-                Button("Remove Certificate", role: .destructive) {
-                    TLSIdentityStore.clear()
-                    refreshCertificate()
+            certificateStatus
+            if setup.isWorking {
+                HStack { ProgressView(); Text("Creating certificate…") }
+            } else if setup.status == .none {
+                Button {
+                    setup.generate(newRoot: false, host: host)
+                } label: {
+                    Label("Generate Certificate", systemImage: "wand.and.stars")
+                        .font(.headline)
                 }
-            } else {
-                Label("No HTTPS certificate yet", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-            }
-            Button("Add server.p12…") { showingImporter = true }
-
-            if pendingP12 != nil {
-                SecureField("Password", text: $password)
-                Button("Save") { savePendingCertificate() }
             }
         } header: {
             Text("HTTPS certificate")
         } footer: {
-            Text("This isn't your signing certificate. Create it with scripts/make-local-cert.sh, install rootCA.mobileconfig, then turn on full trust in Settings › General › About › Certificate Trust Settings.")
+            Text("iOS only installs from HTTPS links it trusts. This creates a certificate that only works for this iPhone (localhost and 127.0.0.1). It isn't your signing certificate.")
+        }
+
+        if setup.status == .needsTrust {
+            Section {
+                if setup.isGenerated {
+                    Button {
+                        setup.openProfileInSafari(port: port)
+                    } label: {
+                        Label("1. Download Profile in Safari", systemImage: "safari")
+                    }
+                    if let file = setup.profileFile {
+                        ShareLink(item: file) {
+                            Label("…or Save Profile to Files", systemImage: "folder")
+                        }
+                        .font(.callout)
+                    }
+                    Text("2. Open Settings › General › VPN & Device Management, tap “Watch App Installer Local Root” and install it.")
+                } else {
+                    Text("1. Install the profile for your certificate's root, e.g. rootCA.mobileconfig from scripts/make-local-cert.sh.")
+                }
+                Text("3. Open Settings › General › About › Certificate Trust Settings and turn on “Watch App Installer Local Root”.")
+                Button("Check Again", action: refreshCertificate)
+            } header: {
+                Text("Trust it (once)")
+            } footer: {
+                Text("Safari asks to allow the download. If your default browser isn't Safari, use Save Profile to Files, then tap the file in the Files app.")
+            }
+            .font(.callout)
+        }
+
+        Section {
+            TextField("Host", text: $host)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .onSubmit(refreshCertificate)
+            TextField("Port", value: $port, format: .number.grouping(.never))
+                .keyboardType(.numberPad)
+        } header: {
+            Text("Server")
+        } footer: {
+            Text("Only this iPhone can connect. Use 127.0.0.1 or localhost.")
+        }
+
+        Section {
+            DisclosureGroup("Advanced") {
+                if setup.status != .none && setup.isGenerated {
+                    Button("Renew Server Certificate") { setup.generate(newRoot: false, host: host) }
+                    Button("Create New Root…", role: .destructive) { confirmingNewRoot = true }
+                }
+                Button("Use My Own server.p12…") { showingImporter = true }
+                if pendingP12 != nil {
+                    SecureField("Password", text: $password)
+                    Button("Save") { savePendingCertificate() }
+                }
+                if setup.status != .none {
+                    Button("Remove Certificate", role: .destructive) {
+                        TLSIdentityStore.clear()
+                        LocalCertificate.forgetGenerated()
+                        refreshCertificate()
+                    }
+                }
+            }
+        } footer: {
+            Text("Renewing keeps the same root, so nothing needs to be reinstalled.")
         }
 
         Section {
@@ -141,14 +217,37 @@ struct InstallMethodView: View {
         }
     }
 
+    @ViewBuilder
+    private var certificateStatus: some View {
+        switch setup.status {
+        case .none:
+            Label("Not set up", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        case .needsTrust:
+            Label("Created. Needs to be trusted (below).", systemImage: "hand.raised.fill")
+                .foregroundStyle(.orange)
+        case .trusted:
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Ready", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+                if let expiry = LocalCertificate.serverExpiresAt, setup.isGenerated {
+                    Text("Valid until \(expiry.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     private func refreshCertificate() {
-        certificateSummary = TLSIdentityStore.loadIdentity().map { TLSIdentityStore.summary(of: $0) ?? "Installed" }
+        setup.refresh(host: host)
     }
 
     private func savePendingCertificate() {
         guard let data = pendingP12 else { return }
         do {
             try TLSIdentityStore.save(p12: data, password: password)
+            LocalCertificate.forgetGenerated()
             pendingP12 = nil
             password = ""
             refreshCertificate()

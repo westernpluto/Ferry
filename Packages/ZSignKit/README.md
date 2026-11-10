@@ -10,6 +10,9 @@ On-device IPA signing for Watch App Installer. It wraps [zsign](https://github.c
 - `Sources/CZSign/bridge.cpp` and `include/CZSign.h`: a C entry point that extracts an IPA,
   signs every bundle with per-bundle profiles and entitlements, and re-archives it.
 - `Sources/ZSignKit/ZSigner.swift`: the Swift API.
+- `Sources/CZSign/local_tls.cpp` + `Sources/ZSignKit/LocalTLSGenerator.swift`: creates the
+  loopback-only root CA and HTTPS server certificate for the app's local install server
+  (OpenSSL; PKCS#12 output uses SHA1/3DES with a SHA-1 MAC so `SecPKCS12Import` accepts it).
 
 ## Changes to zsign
 

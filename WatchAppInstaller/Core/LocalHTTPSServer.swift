@@ -59,17 +59,23 @@ final class LocalHTTPSServer {
         queue.async { self.routes.removeAll() }
     }
 
-    func start(identity: SecIdentity, port: UInt16) throws {
+    /// Starts listening on the loopback interface. With `identity` nil it serves plain HTTP,
+    /// which is only used to hand the root-certificate profile to Safari.
+    func start(identity: SecIdentity?, port: UInt16) throws {
         stop()
 
-        guard let secIdentity = sec_identity_create(identity) else { throw ServerError.invalidIdentity }
         guard let nwPort = NWEndpoint.Port(rawValue: port) else { throw ServerError.invalidPort }
 
-        let tls = NWProtocolTLS.Options()
-        sec_protocol_options_set_local_identity(tls.securityProtocolOptions, secIdentity)
-        sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
-
-        let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+        let parameters: NWParameters
+        if let identity {
+            guard let secIdentity = sec_identity_create(identity) else { throw ServerError.invalidIdentity }
+            let tls = NWProtocolTLS.Options()
+            sec_protocol_options_set_local_identity(tls.securityProtocolOptions, secIdentity)
+            sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
+            parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+        } else {
+            parameters = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
+        }
         parameters.acceptLocalOnly = true
         parameters.allowLocalEndpointReuse = true
 

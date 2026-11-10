@@ -112,21 +112,24 @@ an unsigned IPA artifact. GitHub names these images after the Xcode version, so 
 ## Setting up "On this iPhone" mode
 
 `itms-services` only accepts HTTPS with a certificate the device trusts, so the built-in server needs
-one. Create it once:
+one. The app makes it for you. Open **Settings › Install Method** and:
 
-```sh
-scripts/make-local-cert.sh            # writes ./local-cert/
-scripts/make-local-cert.sh out mypass # custom folder and .p12 password
-```
+1. Tap **Generate Certificate**. This creates a root certificate and an HTTPS server certificate on
+   the iPhone, both stored in its Keychain.
+2. Tap **Download Profile in Safari**, allow the download, then install "Watch App Installer Local Root"
+   in **Settings › General › VPN & Device Management**. (If Safari isn't your default browser, use
+   **Save Profile to Files** and tap the file in the Files app instead.)
+3. Turn on full trust for it in **Settings › General › About › Certificate Trust Settings**.
 
-1. Send `local-cert/rootCA.mobileconfig` to the iPhone (AirDrop, Files or Mail) and install it in
-   **Settings › General › VPN & Device Management**.
-2. Turn on full trust in **Settings › General › About › Certificate Trust Settings**.
-3. In the app, open **Settings › Install Method › Add server.p12…**, choose `server.p12` and enter its password
-   (default `watchinstaller`).
+Come back to the app and the status changes to **Ready**. The app checks this itself.
 
 The root certificate has X.509 *name constraints* that limit it to `localhost`, `127.0.0.1` and `::1`, so it
-can't be used to impersonate other websites. Still, keep `rootCA.key` private, or delete it.
+can't be used to impersonate other websites. Its private key never leaves the iPhone's Keychain.
+The server certificate is valid for 800 days (iOS's limit for user-trusted roots is 825).
+**Renew Server Certificate** (under Advanced) re-issues it from the same root, so nothing needs reinstalling.
+
+Prefer to make the certificate on a computer? `scripts/make-local-cert.sh` still works. Import its
+`server.p12` with **Advanced › Use My Own server.p12…** and install `rootCA.mobileconfig` the same way.
 
 ## Setting up "My web server" mode
 

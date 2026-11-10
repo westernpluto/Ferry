@@ -94,7 +94,7 @@ final class InstallCoordinator: ObservableObject {
 
     private func serveLocally(_ package: AppPackage, fileURL: URL, host: String, port: Int) {
         guard let identity = TLSIdentityStore.loadIdentity() else {
-            fail("No HTTPS certificate is set up. Add one in Settings › Install Method.")
+            fail("No HTTPS certificate yet. Generate one in Settings › Install Method.")
             return
         }
         guard let port = UInt16(exactly: port), port > 0 else {

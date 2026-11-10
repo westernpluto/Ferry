@@ -34,6 +34,30 @@ int czsign_sign_ipa(const char *input_ipa,
                     czsign_log_callback log_callback,
                     void *log_context);
 
+/// Output of czsign_make_local_tls. Free with czsign_free_local_tls.
+typedef struct {
+    unsigned char *server_p12;   ///< HTTPS server identity (key + cert + root), PKCS#12
+    int server_p12_length;
+    unsigned char *ca_p12;       ///< Root CA key + cert, kept to re-issue server certificates
+    int ca_p12_length;
+    unsigned char *ca_der;       ///< Root CA certificate (DER), for the configuration profile
+    int ca_der_length;
+} czsign_local_tls;
+
+/// Creates a root CA limited (name constraints) to localhost/127.0.0.1/::1 and an HTTPS
+/// server certificate for those names. Pass an existing CA PKCS#12 to re-use that root
+/// (so the installed profile stays valid); pass NULL to create a new root.
+/// Both PKCS#12 outputs use `password`. Returns 0 on success.
+int czsign_make_local_tls(const unsigned char *existing_ca_p12,
+                          int existing_ca_p12_length,
+                          const char *password,
+                          int server_days,
+                          czsign_local_tls *result,
+                          char *error,
+                          int error_length);
+
+void czsign_free_local_tls(czsign_local_tls *result);
+
 #ifdef __cplusplus
 }
 #endif

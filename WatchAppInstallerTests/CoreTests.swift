@@ -1,4 +1,5 @@
 import XCTest
+import Security
 @testable import WatchAppInstaller
 
 final class ProvisioningProfileTests: XCTestCase {
@@ -187,6 +188,43 @@ final class IPAInspectorTests: XCTestCase {
             "Payload/A.app/PlugIns/Widget.appex/",
             "Payload/A.app/Watch/W.app/PlugIns/Complication.appex/",
         ])
+    }
+}
+
+final class LocalCertificateTests: XCTestCase {
+    func testGeneratedCertificateImportsAndRootIsReused() throws {
+        let first = try LocalCertificate.makeMaterial(reusingRoot: nil, password: "pw")
+        let identity = try PKCS12Vault.importPKCS12(first.serverPKCS12, password: "pw")
+        let leaf = try XCTUnwrap(PKCS12Vault.certificate(of: identity))
+        XCTAssertEqual(SecCertificateCopySubjectSummary(leaf) as String?, "localhost")
+        _ = try PKCS12Vault.importPKCS12(first.rootPKCS12, password: "pw")
+        XCTAssertNotNil(SecCertificateCreateWithData(nil, first.rootCertificate as CFData))
+
+        let renewed = try LocalCertificate.makeMaterial(reusingRoot: first.rootPKCS12, password: "pw")
+        XCTAssertEqual(renewed.rootCertificate, first.rootCertificate)
+        XCTAssertNotEqual(renewed.serverPKCS12, first.serverPKCS12)
+
+        let fresh = try LocalCertificate.makeMaterial(reusingRoot: nil, password: "pw")
+        XCTAssertNotEqual(fresh.rootCertificate, first.rootCertificate)
+    }
+
+    func testServerCertificateChainsToRootForLoopbackOnly() throws {
+        let material = try LocalCertificate.makeMaterial(reusingRoot: nil, password: "pw")
+        let identity = try PKCS12Vault.importPKCS12(material.serverPKCS12, password: "pw")
+        let leaf = try XCTUnwrap(PKCS12Vault.certificate(of: identity))
+        let root = try XCTUnwrap(SecCertificateCreateWithData(nil, material.rootCertificate as CFData))
+
+        func evaluate(_ host: String) -> Bool {
+            var trust: SecTrust?
+            SecTrustCreateWithCertificates([leaf] as CFArray, SecPolicyCreateSSL(true, host as CFString), &trust)
+            guard let trust else { return false }
+            SecTrustSetAnchorCertificates(trust, [root] as CFArray)
+            SecTrustSetNetworkFetchAllowed(trust, false)
+            return SecTrustEvaluateWithError(trust, nil)
+        }
+        XCTAssertTrue(evaluate("localhost"))
+        XCTAssertTrue(evaluate("127.0.0.1"))
+        XCTAssertFalse(evaluate("example.com"))
     }
 }
 
