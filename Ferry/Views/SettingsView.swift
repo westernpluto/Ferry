@@ -120,11 +120,18 @@ struct InstallMethodView: View {
                     Label("Generate Certificate", systemImage: "wand.and.stars")
                         .font(.headline)
                 }
+            } else if setup.status == .outdated {
+                Button {
+                    setup.generate(newRoot: true, host: host)
+                } label: {
+                    Label("Update Certificate", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.headline)
+                }
             }
         } header: {
             Text("HTTPS certificate")
         } footer: {
-            Text("iOS only installs from HTTPS links it trusts. This creates a certificate that only works for this iPhone (localhost and 127.0.0.1). It isn't your signing certificate.")
+            Text("iOS only installs from HTTPS links it trusts. This creates a certificate that only works for addresses that point to this iPhone. It isn't your signing certificate.")
         }
 
         if setup.status == .needsTrust {
@@ -141,7 +148,7 @@ struct InstallMethodView: View {
                         }
                         .font(.callout)
                     }
-                    Text("2. Open Settings › General › VPN & Device Management, tap “Ferry Local Root” and install it.")
+                    Text("2. Open Settings › General › VPN & Device Management, tap “Ferry Local Root” and install it. If an older Ferry Local Root profile is listed, remove it.")
                 } else {
                     Text("1. Install the profile for your certificate's root, e.g. rootCA.mobileconfig from scripts/make-local-cert.sh.")
                 }
@@ -156,16 +163,19 @@ struct InstallMethodView: View {
         }
 
         Section {
-            TextField("Host", text: $host)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .onSubmit(refreshCertificate)
+            Picker("Address", selection: $host) {
+                ForEach(LocalHostOption.allCases) { Text($0.title).tag($0.rawValue) }
+                if LocalHostOption(rawValue: host) == nil {
+                    Text(host).tag(host)
+                }
+            }
+            .onChange(of: host) { _ in refreshCertificate() }
             TextField("Port", value: $port, format: .number.grouping(.never))
                 .keyboardType(.numberPad)
         } header: {
             Text("Server")
         } footer: {
-            Text("Only this iPhone can connect. Use 127.0.0.1 or localhost.")
+            Text("Only this iPhone can connect. iOS won't install from a bare IP address, so the default is a public name that points back to this iPhone (127.0.0.1). Looking it up needs an internet connection; choose localhost to work offline.")
         }
 
         Section {
@@ -190,18 +200,6 @@ struct InstallMethodView: View {
         } footer: {
             Text("Renewing keeps the same root, so nothing needs to be reinstalled.")
         }
-
-        Section {
-            TextField("Host", text: $host)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            TextField("Port", value: $port, format: .number.grouping(.never))
-                .keyboardType(.numberPad)
-        } header: {
-            Text("Server")
-        } footer: {
-            Text("Only this iPhone can connect. The certificate must be valid for this host.")
-        }
     }
 
     private var remoteSection: some View {
@@ -222,6 +220,9 @@ struct InstallMethodView: View {
         switch setup.status {
         case .none:
             Label("Not set up", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        case .outdated:
+            Label("Needs a one-time update: it was made before Ferry could install from a web address. Tap Update, then install the new profile.", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
                 .foregroundStyle(.orange)
         case .needsTrust:
             Label("Created. Needs to be trusted (below).", systemImage: "hand.raised.fill")

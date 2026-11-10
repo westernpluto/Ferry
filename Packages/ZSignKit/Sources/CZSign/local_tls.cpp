@@ -83,17 +83,23 @@ X509 *makeCertificate(EVP_PKEY *key, const char *commonName, X509 *issuer, EVP_P
     ok = ok && X509_set_issuer_name(cert, X509_get_subject_name(signer)) == 1;
 
     if (ok && isCA) {
+        // Only names that always resolve to this device: localhost, the loopback IPs, and
+        // public DNS names that answer 127.0.0.1 for every subdomain (localtest.me and
+        // 127-0-0-1.sslip.io). iOS's installer won't fetch from a bare IP address.
         ok = addExtension(cert, signer, NID_basic_constraints, "critical,CA:TRUE,pathlen:0") &&
              addExtension(cert, signer, NID_key_usage, "critical,keyCertSign,cRLSign") &&
              addExtension(cert, signer, NID_subject_key_identifier, "hash") &&
              addExtension(cert, signer, NID_name_constraints,
-                          "critical,permitted;DNS:localhost,permitted;IP:127.0.0.1/255.255.255.255,"
+                          "critical,permitted;DNS:localhost,permitted;DNS:localtest.me,"
+                          "permitted;DNS:127-0-0-1.sslip.io,permitted;IP:127.0.0.1/255.255.255.255,"
                           "permitted;IP:0:0:0:0:0:0:0:1/FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF");
     } else if (ok) {
         ok = addExtension(cert, signer, NID_basic_constraints, "critical,CA:FALSE") &&
              addExtension(cert, signer, NID_key_usage, "critical,digitalSignature,keyEncipherment") &&
              addExtension(cert, signer, NID_ext_key_usage, "serverAuth") &&
-             addExtension(cert, signer, NID_subject_alt_name, "DNS:localhost,IP:127.0.0.1,IP:0:0:0:0:0:0:0:1") &&
+             addExtension(cert, signer, NID_subject_alt_name,
+                          "DNS:localhost,DNS:localtest.me,DNS:*.localtest.me,DNS:127-0-0-1.sslip.io,"
+                          "DNS:*.127-0-0-1.sslip.io,IP:127.0.0.1,IP:0:0:0:0:0:0:0:1") &&
              addExtension(cert, signer, NID_subject_key_identifier, "hash") &&
              addExtension(cert, signer, NID_authority_key_identifier, "keyid");
     }

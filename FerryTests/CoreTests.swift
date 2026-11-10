@@ -224,7 +224,11 @@ final class LocalCertificateTests: XCTestCase {
         }
         XCTAssertTrue(evaluate("localhost"))
         XCTAssertTrue(evaluate("127.0.0.1"))
+        for option in LocalHostOption.allCases {
+            XCTAssertTrue(evaluate(option.rawValue), option.rawValue)
+        }
         XCTAssertFalse(evaluate("example.com"))
+        XCTAssertFalse(evaluate("evil.sslip.io"))
     }
 }
 

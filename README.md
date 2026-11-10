@@ -171,8 +171,9 @@ one. The app makes it for you. Open **Settings › Install Method** and:
 
 Come back to the app and the status changes to **Ready**. The app checks this itself.
 
-The root certificate has X.509 *name constraints* that limit it to `localhost`, `127.0.0.1` and `::1`, so it
-can't be used to impersonate other websites. Its private key never leaves the iPhone's Keychain.
+The root certificate has X.509 *name constraints* that limit it to `localhost`, `127.0.0.1`, `::1`,
+`localtest.me` and `127-0-0-1.sslip.io` (public names that always resolve to 127.0.0.1), so it can't be
+used to impersonate other websites. Its private key never leaves the iPhone's Keychain.
 The server certificate is valid for 800 days (iOS's limit for user-trusted roots is 825).
 **Renew Server Certificate** (under Advanced) re-issues it from the same root, so nothing needs reinstalling.
 
@@ -187,12 +188,12 @@ The server needs a publicly trusted certificate (Let's Encrypt is fine).
 
 ## Troubleshooting
 
-- **"Cannot connect to 127.0.0.1"**: iOS's installer couldn't reach Ferry's built-in server. Ferry now
-  tests its server before handing the link to iOS, and the install screen's Activity list says why it
-  failed: the server didn't start (try another port in Settings › Install Method), or the certificate
-  isn't trusted (turn on "Ferry Local Root" in Settings › General › About › Certificate Trust Settings,
-  and reinstall the profile if you generated a new certificate). If the check passes but iOS still can't
-  connect, the Activity list shows any connection that failed, including TLS errors.
+- **"Cannot connect to 127.0.0.1"**: iOS's installer won't fetch apps from a bare IP address (it never
+  even connects). Ferry now serves from **127-0-0-1.sslip.io** by default, a public name whose DNS always
+  answers 127.0.0.1, so the app still comes from this iPhone. Its certificate covers that name. If you
+  generated the certificate in an older version, Settings › Install Method shows **Update Certificate**:
+  tap it, then install and trust the new profile (and remove the old one). The name needs an internet
+  connection to look up. `ferry.localtest.me` and `localhost` are alternatives in the same screen.
 - **Nothing happens / "Unable to install"**: the profile probably doesn't include this iPhone's or watch's UDID,
   or the certificate isn't trusted. The Activity log shows whether iOS requested `manifest.plist` and `app.ipa`.
 - **No request in the log**: the root certificate isn't fully trusted (step 2 above), or the host in

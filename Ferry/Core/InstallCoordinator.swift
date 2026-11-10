@@ -163,7 +163,9 @@ final class InstallCoordinator: ObservableObject {
             case .serverCertificateUntrusted, .serverCertificateHasUnknownRoot, .serverCertificateHasBadDate,
                  .serverCertificateNotYetValid, .secureConnectionFailed:
                 return "iOS doesn't trust Ferry's HTTPS certificate (\(error.localizedDescription)). In Settings › General › About › Certificate Trust Settings, turn on “Ferry Local Root”. If you generated a new certificate, install its profile again from Settings › Install Method."
-            case .cannotConnectToHost, .timedOut, .networkConnectionLost, .cannotFindHost, .notConnectedToInternet:
+            case .cannotFindHost, .dnsLookupFailed:
+                return "Couldn't look up \(host). That name needs an internet connection, and some DNS filters block names that point to 127.0.0.1. Connect to the internet, or choose localhost in Settings › Install Method."
+            case .cannotConnectToHost, .timedOut, .networkConnectionLost, .notConnectedToInternet:
                 return "Ferry's install server didn't respond on \(host):\(port) (\(error.localizedDescription)). Try another port in Settings › Install Method, or restart Ferry."
             default:
                 return "Couldn't reach Ferry's install server: \(error.localizedDescription)"

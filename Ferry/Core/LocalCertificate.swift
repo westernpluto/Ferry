@@ -21,15 +21,23 @@ enum LocalCertificate {
 
     static var hasRoot: Bool { rootVault.load() != nil }
 
+    /// Version 2 roots also allow localtest.me and 127-0-0-1.sslip.io (iOS's installer won't
+    /// fetch from a bare IP). Older roots can't sign those names, so they're replaced.
+    static let currentRootVersion = 2
+    private static let rootVersionKey = "localRootVersion"
+    static var rootVersion: Int { UserDefaults.standard.integer(forKey: rootVersionKey) }
+    static var rootIsOutdated: Bool { hasRoot && rootVersion < currentRootVersion }
+
     /// Makes a new server certificate and saves it for the local server.
     /// Keeps the existing root (so its installed profile stays valid) unless `newRoot` is true.
     static func generate(newRoot: Bool = false) throws {
-        let existing = newRoot ? nil : rootVault.load()
+        let existing = (newRoot || rootIsOutdated) ? nil : rootVault.load()
         let password = existing?.password ?? UUID().uuidString
         let material = try makeMaterial(reusingRoot: existing?.p12, password: password)
         try TLSIdentityStore.save(p12: material.serverPKCS12, password: password)
         try rootVault.save(p12: material.rootPKCS12, password: password)
         UserDefaults.standard.set(Date(), forKey: createdKey)
+        UserDefaults.standard.set(currentRootVersion, forKey: rootVersionKey)
     }
 
     static func makeMaterial(reusingRoot root: Data?, password: String) throws -> LocalTLSMaterial {
