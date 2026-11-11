@@ -174,6 +174,18 @@ final class SigningPlannerTests: XCTestCase {
     }
 }
 
+final class BuildNumberTests: XCTestCase {
+    func testFreshBuildNumberIsValidAndIncreasing() {
+        let earlier = SigningService.freshBuildNumber(basedOn: "45", now: Date(timeIntervalSince1970: 1_790_000_000))
+        let later = SigningService.freshBuildNumber(basedOn: "45", now: Date(timeIntervalSince1970: 1_790_000_600))
+        XCTAssertTrue(earlier.hasPrefix("45."))
+        XCTAssertNotNil(earlier.range(of: #"^\d+\.\d+$"#, options: .regularExpression))
+        XCTAssertEqual(earlier.compare(later, options: .numeric), .orderedAscending)
+        XCTAssertTrue(SigningService.freshBuildNumber(basedOn: "1.2.3").hasPrefix("1."))
+        XCTAssertTrue(SigningService.freshBuildNumber(basedOn: "abc").hasPrefix("1."))
+    }
+}
+
 final class IPAInspectorTests: XCTestCase {
     func testFindsNestedExtensions() {
         let paths: Set<String> = [

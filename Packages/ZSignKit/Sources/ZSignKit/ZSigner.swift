@@ -34,6 +34,7 @@ public enum ZSigner {
         password: String?,
         profiles: [ZSignProfile],
         temporaryDirectory: URL,
+        bundleVersion: String? = nil,
         log: @escaping @Sendable (_ message: String, _ isError: Bool) -> Void
     ) throws {
         let box = LogBox(handler: log)
@@ -67,11 +68,12 @@ public enum ZSigner {
         let certificatePath = certificateURL.map { cString($0.path) }
         let passwordValue = password.map { cString($0) }
         let tempPath = cString(temporaryDirectory.path)
+        let versionValue = bundleVersion.map { cString($0) }
 
         let result = cProfiles.withUnsafeBufferPointer { buffer in
             czsign_sign_ipa(
                 inputPath, outputPath, keyPath, certificatePath, passwordValue,
-                buffer.baseAddress, Int32(buffer.count), tempPath, callback, context
+                buffer.baseAddress, Int32(buffer.count), tempPath, versionValue, callback, context
             )
         }
         guard result == 0 else {

@@ -177,7 +177,8 @@ struct PackageDetailView: View {
                 outputURL: store.signedFileURL(for: package),
                 plan: plan,
                 profileFiles: files,
-                credentials: credentials
+                credentials: credentials,
+                freshBuildNumber: signing.freshBuildNumber
             )
         }
 

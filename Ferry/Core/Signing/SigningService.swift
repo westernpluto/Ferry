@@ -11,6 +11,8 @@ struct SigningJob: Sendable {
     /// Saved profile ID → its file on disk.
     var profileFiles: [UUID: URL]
     var credentials: PKCS12Vault.Contents
+    /// Give every bundle a new, matching CFBundleVersion (see `SigningService.freshBuildNumber`).
+    var freshBuildNumber = false
 }
 
 enum SigningServiceError: LocalizedError {
@@ -71,6 +73,12 @@ enum SigningService {
             log("\(assignment.bundle.displayName) → \(assignment.profile.profile.name)", false)
         }
 
+        var bundleVersion: String?
+        if job.freshBuildNumber {
+            bundleVersion = freshBuildNumber(basedOn: job.package.container.buildVersion)
+            log("Build number for this install: \(bundleVersion!)", false)
+        }
+
         try? fileManager.removeItem(at: job.outputURL)
         try ZSigner.signIPA(
             input: job.inputURL,
@@ -80,6 +88,7 @@ enum SigningService {
             password: key.password,
             profiles: profiles,
             temporaryDirectory: work,
+            bundleVersion: bundleVersion,
             log: log
         )
 
@@ -92,6 +101,17 @@ enum SigningService {
         signed.watchApps = result.watchApps
         signed.extensions = result.extensions
         return signed
+    }
+
+    /// A build number that's higher than the original and than any earlier install from
+    /// Ferry: `<original's first number>.<minutes since 2024>`. watchOS can keep an old watch
+    /// app when an update arrives with the same build number; this guarantees it changes,
+    /// and gives the iPhone app and watch app the same value, as Apple requires.
+    static func freshBuildNumber(basedOn original: String, now: Date = Date()) -> String {
+        let major = original.split(separator: ".").first.flatMap { Int($0) } ?? 1
+        let epoch = Date(timeIntervalSince1970: 1_704_067_200) // 2024-01-01 UTC
+        let minutes = max(1, Int(now.timeIntervalSince(epoch) / 60))
+        return "\(major).\(minutes)"
     }
 
     private struct KeyMaterial {

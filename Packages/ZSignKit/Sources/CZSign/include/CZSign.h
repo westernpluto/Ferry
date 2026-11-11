@@ -22,6 +22,8 @@ typedef void (*czsign_log_callback)(void *context, int is_error, const char *mes
 /// - cert_path: PEM/DER certificate (may be NULL when key_path is a .p12).
 /// - password: password for key_path (may be NULL).
 /// - temp_folder: an existing, writable folder for the extracted app.
+/// - bundle_version: if not NULL, CFBundleVersion of every app and extension is set to it
+///   before signing (so an iPhone app and its watch app keep matching build numbers).
 /// Returns 0 on success.
 int czsign_sign_ipa(const char *input_ipa,
                     const char *output_ipa,
@@ -31,6 +33,7 @@ int czsign_sign_ipa(const char *input_ipa,
                     const czsign_profile *profiles,
                     int profile_count,
                     const char *temp_folder,
+                    const char *bundle_version,
                     czsign_log_callback log_callback,
                     void *log_context);
 

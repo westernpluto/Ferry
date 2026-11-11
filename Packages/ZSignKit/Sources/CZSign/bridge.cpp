@@ -8,6 +8,8 @@
 #include "archive.h"
 #include <list>
 #include <mutex>
+#include <dirent.h>
+#include <sys/stat.h>
 
 extern void (*g_zsign_log_hook)(int nColor, const char *szLog);
 
@@ -23,6 +25,44 @@ void forwardLog(int nColor, const char *szLog) {
 }
 
 std::string safe(const char *value) { return value ? std::string(value) : std::string(); }
+
+bool endsWith(const std::string &value, const std::string &suffix) {
+    return value.size() >= suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+/// Sets CFBundleVersion in the Info.plist of every .app / .appex below `folder`,
+/// keeping each file's format (binary or XML). Returns the number of bundles changed.
+int setBundleVersions(const std::string &folder, const std::string &version) {
+    int changed = 0;
+    DIR *dir = opendir(folder.c_str());
+    if (!dir) return 0;
+    while (struct dirent *entry = readdir(dir)) {
+        std::string name = entry->d_name;
+        if (name == "." || name == "..") continue;
+        std::string path = folder + "/" + name;
+        struct stat info;
+        if (lstat(path.c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) continue;
+        if (endsWith(name, ".app") || endsWith(name, ".appex")) {
+            std::string plistPath = path + "/Info.plist";
+            std::string data;
+            jvalue plist;
+            bool binary = false;
+            if (ZFile::ReadFile(plistPath.c_str(), data) && plist.read_plist(data, NULL, &binary) &&
+                plist.has("CFBundleVersion")) {
+                plist["CFBundleVersion"] = version;
+                bool written = binary ? plist.write_bplist_to_file("%s", plistPath.c_str())
+                                      : plist.style_write_plist_to_file("%s", plistPath.c_str());
+                if (written) {
+                    changed++;
+                    ZLog::PrintV(">>> Build number:\t%s -> %s\n", name.c_str(), version.c_str());
+                }
+            }
+        }
+        changed += setBundleVersions(path, version);
+    }
+    closedir(dir);
+    return changed;
+}
 
 struct LogScope {
     LogScope(czsign_log_callback callback, void *context) {
@@ -46,6 +86,7 @@ extern "C" int czsign_sign_ipa(const char *input_ipa,
                                const czsign_profile *profiles,
                                int profile_count,
                                const char *temp_folder,
+                               const char *bundle_version,
                                czsign_log_callback log_callback,
                                void *log_context) {
     std::lock_guard<std::mutex> guard(g_signLock);
@@ -71,6 +112,12 @@ extern "C" int czsign_sign_ipa(const char *input_ipa,
         ZLog::Error(">>> Could not extract the IPA.\n");
         ZFile::RemoveFolder(folder.c_str());
         return -3;
+    }
+
+    if (bundle_version && *bundle_version) {
+        if (setBundleVersions(folder + "/Payload", bundle_version) == 0) {
+            ZLog::Warn(">>> Couldn't set the build number; signing with the original.\n");
+        }
     }
 
     ZBundle bundle;

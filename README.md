@@ -188,6 +188,13 @@ The server needs a publicly trusted certificate (Let's Encrypt is fine).
 
 ## Troubleshooting
 
+- **The iPhone app updates but the watch app doesn't (until the watch restarts)**: watchOS can keep the
+  old watch app when an update arrives with the same build number. With **New build number for each
+  install** (Settings › Signing, on by default) Ferry gives the iPhone app, the watch app and their
+  extensions one new, matching build number every time, so the watch always sees an update. The
+  version you see (e.g. 1.0.2) doesn't change. If it still sticks, it's watchOS's install service on
+  the watch: restarting the watch, or removing the watch app in the Watch app and installing it again,
+  clears it.
 - **"Cannot connect to 127.0.0.1"**: iOS's installer won't fetch apps from a bare IP address (it never
   even connects). Ferry now serves from **127-0-0-1.sslip.io** by default, a public name whose DNS always
   answers 127.0.0.1, so the app still comes from this iPhone. Its certificate covers that name. If you

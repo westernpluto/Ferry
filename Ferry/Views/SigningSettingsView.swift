@@ -21,8 +21,9 @@ struct SigningSettingsView: View {
         Form {
             Section {
                 Toggle("Sign apps before installing", isOn: $signing.signBeforeInstall)
+                Toggle("New build number for each install", isOn: $signing.freshBuildNumber)
             } footer: {
-                Text("Re-signs each app with your certificate, so builds that are unsigned, App Store-signed or signed by someone else can be installed on your devices.")
+                Text("Re-signs each app with your certificate, so builds that are unsigned, App Store-signed or signed by someone else can be installed on your devices. A new build number (the version shown stays the same) makes sure your Apple Watch treats every install as an update.")
             }
 
             certificateSection

@@ -14,9 +14,14 @@ final class SigningStore: ObservableObject {
     @Published var signBeforeInstall: Bool {
         didSet { UserDefaults.standard.set(signBeforeInstall, forKey: Self.signKey) }
     }
+    /// Give each signed install a new build number (helps the Apple Watch pick up updates).
+    @Published var freshBuildNumber: Bool {
+        didSet { UserDefaults.standard.set(freshBuildNumber, forKey: Self.freshBuildKey) }
+    }
 
     nonisolated static let vault = PKCS12Vault(service: "Ferry.SigningIdentity", account: "developer")
     private static let signKey = "signBeforeInstall"
+    private static let freshBuildKey = "freshBuildNumber"
 
     let directory: URL
     private var indexURL: URL { directory.appendingPathComponent("profiles.json") }
@@ -29,6 +34,7 @@ final class SigningStore: ObservableObject {
             .appendingPathComponent("Profiles", isDirectory: true)
         self.directory = base
         signBeforeInstall = UserDefaults.standard.object(forKey: Self.signKey) as? Bool ?? true
+        freshBuildNumber = UserDefaults.standard.object(forKey: Self.freshBuildKey) as? Bool ?? true
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         loadProfiles()
         refreshCertificate()
