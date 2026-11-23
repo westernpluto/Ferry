@@ -40,6 +40,23 @@ An installed app that's behind a source or your library, or whose signature expi
 shows in **Sources › Installed Apps**, on its library row and page, and on the TV's app list, and
 counts toward the Apps tab badge. Tap it to open the app and install the new version.
 
+### Updating Ferry itself
+
+Ferry can update itself from a source. Your Ferry install page publishes one for your copy at
+`https://<user>.github.io/<repo>/source.json`. It lists the unsigned build, with the workflow run
+number as the build number, so every published build counts as newer. Add that address in the
+Sources tab (any source that lists Ferry works too).
+
+When a newer build is listed, Ferry offers it when it opens (**Update**, **Later** or **Skip This
+Version**), and **Settings › Ferry Updates** shows it with an **Update Ferry** button. There you can
+also pick which source to use and turn off the check when Ferry opens. Updating downloads the build
+into your library (replacing the previous copy), signs it with your certificate under the **bundle
+ID and team this copy already has**, and installs it over itself with your install method. iOS closes
+Ferry while it installs. Your apps, profiles and certificate stay because the app's identity doesn't
+change. If no imported profile covers Ferry's bundle ID, Ferry adds the profile it was installed with,
+which always does. Ferry's own build number isn't changed when it signs itself, so it can tell when
+it's up to date. Tapping Sign & Install on the Ferry entry in your library signs it the same way.
+
 ## Your own bundle IDs and team
 
 Some apps ask for bundle IDs or a team your profiles don't cover (for example a third-party app, or

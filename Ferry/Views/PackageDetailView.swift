@@ -9,6 +9,7 @@ struct PackageDetailView: View {
     @EnvironmentObject private var sources: SourceStore
     @EnvironmentObject private var appleTV: AppleTVStore
     @EnvironmentObject private var history: InstallHistory
+    @EnvironmentObject private var updater: SelfUpdater
     @AppStorage(SettingsKey.appleTVTarget) private var appleTVTarget = ""
     @AppStorage(SettingsKey.mode) private var mode: InstallMode = .local
     @AppStorage(SettingsKey.port) private var port = SettingsDefault.port
@@ -152,6 +153,12 @@ struct PackageDetailView: View {
         }
         .navigationTitle(package.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            // Ferry's own build: install it over this copy, not as a second app.
+            if updater.isFerry(package, sources: sources), signing.certificate != nil {
+                updater.prepareSigning(for: package, signing: signing)
+            }
+        }
         .sheet(isPresented: $showingInstall, onDismiss: {
             installer.stop()
             // The signed copy has been handed over; keep only the original IPA.
@@ -311,24 +318,12 @@ struct PackageDetailView: View {
         }
 
         var job: SigningJob?
-        if let plan {
-            guard let credentials = SigningStore.vault.load() else {
+        if willSign {
+            guard let signingJob = signing.job(for: package, input: store.fileURL(for: package), output: store.signedFileURL(for: package)) else {
                 showingSigningSetup = true
                 return
             }
-            var files: [UUID: URL] = [:]
-            for assignment in plan.assignments {
-                files[assignment.profile.id] = signing.fileURL(for: assignment.profile)
-            }
-            job = SigningJob(
-                package: package,
-                inputURL: store.fileURL(for: package),
-                outputURL: store.signedFileURL(for: package),
-                plan: plan,
-                profileFiles: files,
-                credentials: credentials,
-                freshBuildNumber: signing.freshBuildNumber
-            )
+            job = signingJob
         }
 
         installer.start(package, fileURL: store.fileURL(for: package), signing: job, target: target)

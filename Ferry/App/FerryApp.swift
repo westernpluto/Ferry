@@ -9,6 +9,7 @@ struct FerryApp: App {
     @StateObject private var sources = SourceStore()
     @StateObject private var appleTV = AppleTVStore()
     @StateObject private var history = InstallHistory()
+    @StateObject private var updater = SelfUpdater()
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +20,7 @@ struct FerryApp: App {
                 .environmentObject(sources)
                 .environmentObject(appleTV)
                 .environmentObject(history)
+                .environmentObject(updater)
                 .onAppear {
                     installer.appleTV = appleTV
                     installer.history = history
@@ -43,6 +45,13 @@ struct RootView: View {
     @EnvironmentObject private var signing: SigningStore
     @EnvironmentObject private var appleTV: AppleTVStore
     @EnvironmentObject private var history: InstallHistory
+    @EnvironmentObject private var updater: SelfUpdater
+    @EnvironmentObject private var installer: InstallCoordinator
+
+    @State private var offeredUpdate: SourceStore.Update?
+    @State private var selfInstall: AppPackage?
+    @State private var lastSelfInstall: AppPackage?
+    @State private var selfUpdateError: String?
 
     /// Apps with something to do: a newer version in a source, or an installed copy that's
     /// out of date or about to expire. Each app counts once.
@@ -64,12 +73,50 @@ struct RootView: View {
         }
         .task { await checkForUpdates() }
         .onReceive(appleTV.$installedApps) { reconcile($0) }
+        .alert(
+            "Ferry \(offeredUpdate?.version.displayVersion ?? "") Is Available",
+            isPresented: Binding(get: { offeredUpdate != nil }, set: { if !$0 { offeredUpdate = nil } }),
+            presenting: offeredUpdate
+        ) { update in
+            Button("Update") { installSelf(update) }
+            Button("Skip This Version") { updater.skippedVersion = update.version.displayVersion }
+            Button("Later", role: .cancel) {}
+        } message: { update in
+            Text(update.version.localizedDescription.map { "\($0)\n\n" } ?? "")
+                + Text("Ferry signs the update with your certificate and installs it over itself. It closes while iOS installs.")
+        }
+        .alert("Couldn't Update Ferry", isPresented: Binding(get: { selfUpdateError != nil }, set: { if !$0 { selfUpdateError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(selfUpdateError ?? "")
+        }
+        .sheet(item: $selfInstall, onDismiss: {
+            installer.stop()
+            if let lastSelfInstall { store.removeSignedCopy(of: lastSelfInstall) }
+        }) { package in
+            InstallView(package: package)
+        }
+    }
+
+    private func installSelf(_ update: SourceStore.Update) {
+        Task {
+            do {
+                let package = try await updater.install(update, store: store, sources: sources, signing: signing, installer: installer)
+                lastSelfInstall = package
+                selfInstall = package
+            } catch {
+                selfUpdateError = error.localizedDescription
+            }
+        }
     }
 
     /// Refreshes sources, then asks paired Apple TVs which apps they have. TVs are only
     /// contacted once one has been paired, so nobody else sees the Local Network prompt.
     private func checkForUpdates() async {
         await sources.refresh()
+        if let update = updater.availableUpdate(in: sources), updater.shouldPrompt(for: update) {
+            offeredUpdate = update
+        }
         if !appleTV.devices.isEmpty {
             await appleTV.refreshInstalledApps()
         }

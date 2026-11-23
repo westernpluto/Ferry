@@ -115,6 +115,26 @@ final class SigningStore: ObservableObject {
         )
     }
 
+    /// Everything needed to sign `package`, or nil if the certificate can't be read.
+    /// `freshBuildNumber` overrides the setting (Ferry's own updates keep their build number).
+    func job(for package: AppPackage, input: URL, output: URL, freshBuildNumber: Bool? = nil) -> SigningJob? {
+        guard let credentials = Self.vault.load() else { return nil }
+        let signingPlan = plan(for: package)
+        var files: [UUID: URL] = [:]
+        for assignment in signingPlan.assignments {
+            files[assignment.profile.id] = fileURL(for: assignment.profile)
+        }
+        return SigningJob(
+            package: package,
+            inputURL: input,
+            outputURL: output,
+            plan: signingPlan,
+            profileFiles: files,
+            credentials: credentials,
+            freshBuildNumber: freshBuildNumber ?? self.freshBuildNumber
+        )
+    }
+
     // MARK: Per-app bundle IDs and team
 
     func signingOverride(for package: AppPackage) -> SigningOverride? {

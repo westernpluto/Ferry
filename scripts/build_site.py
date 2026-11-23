@@ -5,7 +5,9 @@ Usage: build_site.py OUT_DIR --base-url URL --version V --build B --commit SHA
                      [--run-id ID] [--unsigned-ipa PATH]
                      [--signed-ipa PATH --signing-info JSON [--install-key KEY --expires-at ISO]]
 
-Copies site/ to OUT_DIR, draws the icons and writes info.json. For a signed build it
+Copies site/ to OUT_DIR, draws the icons and writes info.json. With an unsigned IPA it also
+writes source.json, an AltStore-style source listing it, which Ferry uses to update itself
+(it re-signs the unsigned build with the user's own certificate). For a signed build it
 also writes manifest.plist with an absolute IPA URL, which iOS requires:
 
 - Public mode (no --install-key): Ferry.ipa and manifest.plist sit at the site root
@@ -22,6 +24,7 @@ import plistlib
 import re
 import shutil
 import sys
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ferry_icon import png  # noqa: E402
@@ -77,6 +80,7 @@ def main():
     if args.unsigned_ipa and os.path.exists(args.unsigned_ipa):
         shutil.copy(args.unsigned_ipa, os.path.join(args.out, "Ferry-unsigned.ipa"))
         info["hasUnsigned"] = True
+        write_source(args, base)
 
     if args.signed_ipa and os.path.exists(args.signed_ipa):
         with open(args.signing_info) as f:
@@ -114,6 +118,50 @@ def main():
     # Serve files as-is (no Jekyll processing on GitHub Pages).
     open(os.path.join(args.out, ".nojekyll"), "w").close()
     print(f"Site written (signed: {bool(args.signed_ipa)}, private: {bool(key)})")
+
+
+def bundle_info(ipa):
+    """Info.plist of the app in an IPA."""
+    with zipfile.ZipFile(ipa) as archive:
+        for name in archive.namelist():
+            parts = name.split("/")
+            if len(parts) == 3 and parts[0] == "Payload" and parts[1].endswith(".app") and parts[2] == "Info.plist":
+                return plistlib.loads(archive.read(name))
+    return {}
+
+
+def write_source(args, base):
+    """source.json: Ferry's own update source, pointing at the unsigned build."""
+    plist = bundle_info(args.unsigned_ipa)
+    today = datetime.datetime.now(datetime.timezone.utc)
+    notes = f"Build {args.build}" + (f" ({args.commit[:7]})" if args.commit else "")
+    source = {
+        "name": "Ferry",
+        "identifier": plist.get("CFBundleIdentifier", "com.example.Ferry") + ".source",
+        "subtitle": "Updates for Ferry. Ferry signs them with your own certificate.",
+        "iconURL": base + "icon-512.png",
+        "website": base,
+        "apps": [{
+            "name": TITLE,
+            "bundleIdentifier": plist.get("CFBundleIdentifier", "com.example.Ferry"),
+            "developerName": "Ferry",
+            "subtitle": "Sign and install your own apps",
+            "localizedDescription": "Signs and installs your own iOS, Apple Watch and Apple TV apps without a Mac.",
+            "iconURL": base + "icon-512.png",
+            "versions": [{
+                "version": args.version,
+                "buildVersion": args.build,
+                "date": today.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "localizedDescription": notes,
+                "downloadURL": base + "Ferry-unsigned.ipa",
+                "size": os.path.getsize(args.unsigned_ipa),
+                "minOSVersion": plist.get("MinimumOSVersion", "16.0"),
+            }],
+        }],
+        "news": [],
+    }
+    with open(os.path.join(args.out, "source.json"), "w") as f:
+        json.dump(source, f, indent=2)
 
 
 if __name__ == "__main__":

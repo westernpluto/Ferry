@@ -5,6 +5,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var signing: SigningStore
     @EnvironmentObject private var appleTV: AppleTVStore
+    @EnvironmentObject private var updater: SelfUpdater
+    @EnvironmentObject private var sources: SourceStore
     @AppStorage(SettingsKey.mode) private var mode: InstallMode = .local
 
     var body: some View {
@@ -27,6 +29,15 @@ struct SettingsView: View {
                             Text(mode.title)
                         } label: {
                             Label("Install Method", systemImage: "arrow.down.circle")
+                        }
+                    }
+                    NavigationLink {
+                        FerryUpdateView()
+                    } label: {
+                        LabeledContent {
+                            Text(updater.availableUpdate(in: sources).map { "\($0.version.version) available" } ?? updater.displayVersion)
+                        } label: {
+                            Label("Ferry Updates", systemImage: "arrow.triangle.2.circlepath")
                         }
                     }
                     NavigationLink {
