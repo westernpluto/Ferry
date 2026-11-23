@@ -87,6 +87,18 @@ enum IPAInspector {
         return BundleInfo(path: root, plist: plist, hasCodeSignature: signed, profile: profile)
     }
 
+    /// The entitlements each bundle's executable was signed with, by bundle path.
+    static func binaryEntitlements(of bundles: [BundleInfo], in url: URL) -> [String: [String: Any]] {
+        guard let archive = try? Archive(url: url, accessMode: .read) else { return [:] }
+        var result: [String: [String: Any]] = [:]
+        for bundle in bundles {
+            guard let data = try? read(bundle.executablePath, in: archive),
+                  let entitlements = MachOEntitlements.read(data) else { continue }
+            result[bundle.path] = entitlements
+        }
+        return result
+    }
+
     private static func read(_ path: String, in archive: Archive) throws -> Data? {
         guard let entry = archive[path] else { return nil }
         var data = Data()

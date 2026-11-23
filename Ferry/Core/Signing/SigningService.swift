@@ -30,6 +30,8 @@ enum SigningServiceError: LocalizedError {
 }
 
 enum SigningService {
+    /// Marks log lines from Ferry itself (as opposed to zsign's progress), for the Activity log.
+    static let notePrefix = "• "
     /// Signs the package and returns the inspected result. Runs off the main thread.
     static func sign(_ job: SigningJob, log: @escaping @Sendable (String, Bool) -> Void) async throws -> AppPackage {
         try await Task.detached(priority: .userInitiated) {
@@ -42,6 +44,7 @@ enum SigningService {
             throw SigningServiceError.incompletePlan(job.plan.missing.map(\.displayName))
         }
 
+        let note: (String) -> Void = { log(notePrefix + $0, false) }
         let fileManager = FileManager.default
         let work = fileManager.temporaryDirectory.appendingPathComponent("Signing-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: work, withIntermediateDirectories: true)
@@ -54,6 +57,10 @@ enum SigningService {
         let ordered = job.plan.assignments.sorted { lhs, rhs in
             lhs.bundle.path == containerPath && rhs.bundle.path != containerPath
         }
+        // What each binary was signed with before, to keep its shared keychain groups.
+        let original = IPAInspector.binaryEntitlements(of: ordered.map(\.bundle), in: job.inputURL)
+        let changes = job.plan.bundleIdentifierChanges
+
         var profiles: [ZSignProfile] = []
         for (index, assignment) in ordered.enumerated() {
             guard let profileURL = job.profileFiles[assignment.profile.id],
@@ -64,22 +71,33 @@ enum SigningService {
             let entitlements = SigningPlanner.entitlements(
                 fromProfileEntitlements: source,
                 applicationIdentifier: assignment.applicationIdentifier,
-                teamIdentifier: assignment.profile.profile.teamIdentifiers.first
+                teamIdentifier: assignment.profile.profile.teamIdentifiers.first,
+                binaryEntitlements: original[assignment.bundle.path],
+                bundleIdentifierChanges: changes
             )
+            if let groups = entitlements["keychain-access-groups"] as? [String] {
+                note("\(assignment.bundle.displayName) keychain groups: \(groups.joined(separator: ", "))")
+            }
+            if let groups = entitlements["com.apple.security.application-groups"] as? [String] {
+                note("\(assignment.bundle.displayName) app groups: \(groups.joined(separator: ", "))")
+            }
+            if let aps = entitlements["aps-environment"] as? String {
+                note("\(assignment.bundle.displayName) push notifications: \(aps)")
+            }
             let entitlementsURL = work.appendingPathComponent("entitlements-\(index).plist")
             try PropertyListSerialization.data(fromPropertyList: entitlements, format: .xml, options: 0)
                 .write(to: entitlementsURL)
             profiles.append(ZSignProfile(profileURL: profileURL, entitlementsURL: entitlementsURL))
-            log("\(assignment.bundle.displayName) → \(assignment.profile.profile.name)", false)
+            note("\(assignment.bundle.displayName) → \(assignment.profile.profile.name)")
             if assignment.changesBundleIdentifier {
-                log("\(assignment.bundle.bundleIdentifier) → \(assignment.bundleIdentifier)", false)
+                note("\(assignment.bundle.bundleIdentifier) → \(assignment.bundleIdentifier)")
             }
         }
 
         var bundleVersion: String?
         if job.freshBuildNumber {
             bundleVersion = freshBuildNumber(basedOn: job.package.container.buildVersion)
-            log("Build number for this install: \(bundleVersion!)", false)
+            note("Build number for this install: \(bundleVersion!)")
         }
 
         try? fileManager.removeItem(at: job.outputURL)

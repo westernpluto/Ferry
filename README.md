@@ -150,6 +150,12 @@ skips expired/App Store profiles and profiles that don't include your certificat
 result per bundle before you install. Entitlements come from each bundle's profile, made concrete
 the way Xcode does (`TEAMID.*` → `TEAMID.com.you.app.watchkitapp`).
 
+Each bundle also keeps the **keychain groups its binary was signed with**, moved to your team (and to
+any new bundle ID you chose), as long as your profile allows them (a normal `TEAMID.*` profile allows
+any). That keeps an app and its extensions sharing keychain items, such as the account token a
+notification service extension needs to show a notification. The Activity log lists each bundle's
+profile, keychain groups, app groups and push environment.
+
 Signing uses [zsign](https://github.com/zhlynn/zsign) (MIT) compiled into the app, with OpenSSL.
 See `Packages/ZSignKit/README.md` for what was changed. The `.p12` is stored in the Keychain on
 this iPhone only. During signing the key is written to a temporary, file-protected folder and

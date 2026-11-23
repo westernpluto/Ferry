@@ -208,10 +208,18 @@ enum SigningPlanner {
 
     /// Entitlements for one bundle, derived from its profile the way Xcode does it:
     /// the App ID and keychain group become concrete, and wildcard-only values are dropped.
+    ///
+    /// `binaryEntitlements` are the ones the bundle was originally signed with. The keychain
+    /// groups it asked for are kept (moved to your team, and to any new bundle ID in
+    /// `bundleIdentifierChanges`) as long as the profile allows them. That's what lets an app
+    /// and its extensions (a notification service extension, a widget) keep sharing keychain
+    /// items such as an account token.
     static func entitlements(
         fromProfileEntitlements source: [String: Any],
         applicationIdentifier: String,
-        teamIdentifier: String?
+        teamIdentifier: String?,
+        binaryEntitlements: [String: Any]? = nil,
+        bundleIdentifierChanges: [String: String] = [:]
     ) -> [String: Any] {
         var result: [String: Any] = [:]
         let prefix = applicationIdentifier.split(separator: ".", maxSplits: 1).first.map(String.init) ?? ""
@@ -237,8 +245,35 @@ enum SigningPlanner {
         if let teamIdentifier {
             result["com.apple.developer.team-identifier"] = teamIdentifier
         }
+        if let requested = binaryEntitlements?["keychain-access-groups"] as? [String], !prefix.isEmpty {
+            let allowed = source["keychain-access-groups"] as? [String] ?? ["\(prefix).*"]
+            let groups = keychainGroups(requested, prefix: prefix, allowed: allowed, changes: bundleIdentifierChanges)
+            if !groups.isEmpty { result["keychain-access-groups"] = groups }
+        }
         if result["keychain-access-groups"] == nil, !prefix.isEmpty {
             result["keychain-access-groups"] = [applicationIdentifier]
+        }
+        return result
+    }
+
+    /// The keychain groups a binary asked for, moved to `prefix` (your team): `OLDTEAM.x` becomes
+    /// `TEAM.x`, with `x` changed when it's a renamed bundle ID. Order is kept (the first group
+    /// is where new keychain items go). Groups the profile doesn't allow are left out.
+    static func keychainGroups(_ requested: [String], prefix: String, allowed: [String], changes: [String: String]) -> [String] {
+        func isAllowed(_ group: String) -> Bool {
+            allowed.contains { pattern in
+                pattern.hasSuffix("*") ? group.hasPrefix(String(pattern.dropLast())) : pattern == group
+            }
+        }
+        var result: [String] = []
+        for group in requested {
+            var value = group
+            if let dot = group.firstIndex(of: "."), group.distance(from: group.startIndex, to: dot) == 10,
+               group[..<dot].allSatisfy({ $0.isUppercase || $0.isNumber }) {
+                let suffix = String(group[group.index(after: dot)...])
+                value = "\(prefix).\(changes[suffix] ?? suffix)"
+            }
+            if isAllowed(value), !result.contains(value) { result.append(value) }
         }
         return result
     }

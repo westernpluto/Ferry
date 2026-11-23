@@ -331,8 +331,10 @@ final class InstallCoordinator: ObservableObject {
 
     private func signingLog(_ message: String, isError: Bool) {
         let text = message.replacingOccurrences(of: ">>> ", with: "")
-        if isError {
-            append(text)
+        // Ferry's own notes (which profile and keychain groups each bundle gets) go in the
+        // log so they can be checked; zsign's progress only shows as the status line.
+        if isError || message.hasPrefix(SigningService.notePrefix) {
+            append(String(text.dropFirst(message.hasPrefix(SigningService.notePrefix) ? SigningService.notePrefix.count : 0)))
         } else {
             detail = text.components(separatedBy: .newlines).first
         }

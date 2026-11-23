@@ -449,6 +449,72 @@ final class InstallHistoryTests: XCTestCase {
     }
 }
 
+final class EntitlementMergeTests: XCTestCase {
+    /// A minimal 64-bit Mach-O whose code signature holds `entitlements`.
+    static func machO(entitlements: [String: Any]) throws -> Data {
+        func le(_ v: UInt32) -> [UInt8] { withUnsafeBytes(of: v.littleEndian, Array.init) }
+        func be(_ v: UInt32) -> [UInt8] { withUnsafeBytes(of: v.bigEndian, Array.init) }
+        let xml = [UInt8](try PropertyListSerialization.data(fromPropertyList: entitlements, format: .xml, options: 0))
+        let entitlementsBlob = be(0xFADE7171) + be(UInt32(8 + xml.count)) + xml
+        let superBlob = be(0xFADE0CC0) + be(UInt32(12 + 8 + entitlementsBlob.count)) + be(1)
+            + be(5) + be(20) + entitlementsBlob
+        let signatureOffset: UInt32 = 32 + 16
+        let header = le(0xFEEDFACF) + le(0x0100000C) + le(0) + le(2) + le(1) + le(16) + le(0) + le(0)
+        let command = le(0x1D) + le(16) + le(signatureOffset) + le(UInt32(superBlob.count))
+        return Data(header + command + superBlob)
+    }
+
+    func testReadsEntitlementsFromThinAndFatBinaries() throws {
+        let wanted: [String: Any] = ["keychain-access-groups": ["OLDTEAM123.com.dev.shared"], "aps-environment": "production"]
+        let thin = try Self.machO(entitlements: wanted)
+        XCTAssertEqual(MachOEntitlements.read(thin)?["keychain-access-groups"] as? [String], ["OLDTEAM123.com.dev.shared"])
+
+        func be(_ v: UInt32) -> [UInt8] { withUnsafeBytes(of: v.bigEndian, Array.init) }
+        let offset: UInt32 = 4096
+        var fat = be(0xCAFEBABE) + be(1) + be(0x0100000C) + be(0) + be(offset) + be(UInt32(thin.count)) + be(14)
+        fat += [UInt8](repeating: 0, count: Int(offset) - fat.count) + [UInt8](thin)
+        XCTAssertEqual(MachOEntitlements.read(Data(fat))?["aps-environment"] as? String, "production")
+
+        XCTAssertNil(MachOEntitlements.read(Data([1, 2, 3])))
+        XCTAssertNil(MachOEntitlements.read(Data(repeating: 0, count: 64)))
+    }
+
+    func testSharedKeychainGroupsSurviveSigning() {
+        let profile: [String: Any] = [
+            "application-identifier": "NEWTEAM999.*",
+            "keychain-access-groups": ["NEWTEAM999.*", "com.apple.token"],
+            "aps-environment": "development",
+        ]
+        let binary: [String: Any] = ["keychain-access-groups": [
+            "OLDTEAM123.com.dev.app.shared", "OLDTEAM123.com.dev.app", "com.apple.token", "group.not.allowed",
+        ]]
+        let result = SigningPlanner.entitlements(
+            fromProfileEntitlements: profile,
+            applicationIdentifier: "NEWTEAM999.com.dev.app.notifications",
+            teamIdentifier: "NEWTEAM999",
+            binaryEntitlements: binary
+        )
+        XCTAssertEqual(result["keychain-access-groups"] as? [String],
+                       ["NEWTEAM999.com.dev.app.shared", "NEWTEAM999.com.dev.app", "com.apple.token"])
+        XCTAssertEqual(result["aps-environment"] as? String, "development")
+
+        // Renamed bundle IDs move with their keychain group.
+        let renamed = SigningPlanner.keychainGroups(["OLDTEAM123.com.dev.app"], prefix: "NEWTEAM999",
+                                                    allowed: ["NEWTEAM999.*"], changes: ["com.dev.app": "com.me.app"])
+        XCTAssertEqual(renamed, ["NEWTEAM999.com.me.app"])
+
+        // A profile with only specific groups keeps out anything else.
+        let narrow = SigningPlanner.keychainGroups(["OLDTEAM123.a", "OLDTEAM123.b"], prefix: "NEWTEAM999",
+                                                   allowed: ["NEWTEAM999.a"], changes: [:])
+        XCTAssertEqual(narrow, ["NEWTEAM999.a"])
+
+        // Without the binary's groups, the bundle's own group is used as before.
+        let plain = SigningPlanner.entitlements(fromProfileEntitlements: profile,
+                                                applicationIdentifier: "NEWTEAM999.com.dev.app", teamIdentifier: "NEWTEAM999")
+        XCTAssertEqual(plain["keychain-access-groups"] as? [String], ["NEWTEAM999.com.dev.app", "com.apple.token"])
+    }
+}
+
 enum TestData {
     static func profileBlob(devices: [String]?, getTaskAllow: Bool = false, allDevices: Bool = false) throws -> Data {
         var plist: [String: Any] = [

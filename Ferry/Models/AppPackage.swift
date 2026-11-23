@@ -17,6 +17,14 @@ struct BundleInfo: Codable, Hashable, Sendable {
     var launchProhibited: Bool
     var hasCodeSignature: Bool
     var profile: ProvisioningProfile?
+    /// CFBundleExecutable. Nil for packages imported by older versions.
+    var executableName: String?
+
+    /// The executable's path inside the archive.
+    var executablePath: String {
+        let folderName = path.split(separator: "/").last.map { String($0.split(separator: ".").first ?? $0) } ?? ""
+        return path + (executableName ?? folderName)
+    }
 
     var isWatchOSBinary: Bool {
         platformName?.lowercased() == "watchos" || deviceFamilies == [4]
@@ -49,6 +57,7 @@ struct BundleInfo: Codable, Hashable, Sendable {
         launchProhibited = plist["LSApplicationLaunchProhibited"] as? Bool ?? false
         self.hasCodeSignature = hasCodeSignature
         self.profile = profile
+        executableName = plist["CFBundleExecutable"] as? String
     }
 }
 
