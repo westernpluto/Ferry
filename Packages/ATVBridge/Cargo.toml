@@ -1,0 +1,31 @@
+[package]
+name = "atvbridge"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "C bridge Ferry uses to pair with and install apps on an Apple TV (from iOStoATV)"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# idevice is pre-1.0 and breaks on point releases, so pin it exactly.
+idevice = { version = "=0.1.68", default-features = false, features = [
+  "ring",
+  "remote_pairing",
+  "rsd",
+  "tunnel_tcp_stack",
+  "afc",
+  "installation_proxy",
+] }
+tokio = { version = "1", features = ["rt", "net", "time", "fs", "io-util", "macros"] }
+plist = "1.8"
+serde_json = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

@@ -14,7 +14,12 @@ enum PackageValidator {
             ))
         }
 
-        if package.watchApps.isEmpty {
+        if container.isTVOSApp {
+            issues.append(.init(
+                severity: .info,
+                message: "Apple TV app: Ferry installs it on a paired Apple TV over Wi-Fi. Its profile must include the Apple TV's UDID (Settings › Apple TV)."
+            ))
+        } else if package.watchApps.isEmpty {
             issues.append(.init(
                 severity: .warning,
                 message: "There's no Apple Watch app in this IPA, so it will only install on the iPhone."

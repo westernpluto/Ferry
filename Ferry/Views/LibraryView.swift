@@ -5,6 +5,7 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject private var store: PackageStore
     @EnvironmentObject private var signing: SigningStore
+    @EnvironmentObject private var sources: SourceStore
 
     @State private var selection: AppPackage.ID?
     @State private var showingImporter = false
@@ -68,7 +69,7 @@ struct LibraryView: View {
 
             Section {
                 ForEach(store.packages) { package in
-                    PackageRow(package: package)
+                    PackageRow(package: package, update: sources.update(for: package), progress: sources.downloads[package.sourceLink?.bundleIdentifier ?? package.container.bundleIdentifier])
                         .tag(package.id)
                 }
                 .onDelete { offsets in
@@ -79,6 +80,7 @@ struct LibraryView: View {
                 }
             }
         }
+        .refreshable { await sources.refresh() }
         .overlay {
             if store.packages.isEmpty && signing.isReady {
                 ContentUnavailableHint(showingImporter: $showingImporter, isEmpty: true)
@@ -120,7 +122,7 @@ private struct ContentUnavailableHint: View {
                 .foregroundStyle(.secondary)
             Text(isEmpty ? "Add an app" : "Select an app")
                 .font(.title2.bold())
-            Text("Add a .ipa file. Its iPhone app and any Apple Watch app inside it are installed together.")
+            Text("Add a .ipa file, or get apps from a source in the Sources tab. Its iPhone app and any Apple Watch app inside it are installed together.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 420)
@@ -141,19 +143,33 @@ private struct ContentUnavailableHint: View {
 
 private struct PackageRow: View {
     let package: AppPackage
+    var update: SourceStore.Update?
+    var progress: Double?
+
+    private var platform: String {
+        if package.isAppleTVApp { return "Apple TV" }
+        return package.watchApps.isEmpty ? "iPhone only" : "iPhone + Watch"
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "shippingbox.fill")
+            Image(systemName: package.isAppleTVApp ? "appletv.fill" : "shippingbox.fill")
                 .font(.title2)
                 .frame(width: 36)
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text(package.title).font(.headline)
-                Text("\(package.container.shortVersion) · \(package.watchApps.isEmpty ? "iPhone only" : "iPhone + Watch")")
+                Text("\(package.container.shortVersion) · \(platform)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let progress {
+                    ProgressView(value: progress)
+                } else if let update {
+                    Label("Update: \(update.version.version)", systemImage: "arrow.down.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.tint)
+                }
             }
         }
         .padding(.vertical, 2)

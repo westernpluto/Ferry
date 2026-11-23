@@ -7,6 +7,7 @@
 #include "openssl.h"
 #include "archive.h"
 #include <list>
+#include <map>
 #include <mutex>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -30,9 +31,12 @@ bool endsWith(const std::string &value, const std::string &suffix) {
     return value.size() >= suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-/// Sets CFBundleVersion in the Info.plist of every .app / .appex below `folder`,
-/// keeping each file's format (binary or XML). Returns the number of bundles changed.
-int setBundleVersions(const std::string &folder, const std::string &version) {
+/// Rewrites the Info.plist of every .app / .appex below `folder` before signing, keeping each
+/// file's format (binary or XML): sets CFBundleVersion to `version` (when not empty) and applies
+/// `renames` (old bundle ID -> new) to CFBundleIdentifier and the watch-app references to it.
+/// Returns the number of bundles changed.
+int rewriteInfoPlists(const std::string &folder, const std::string &version,
+                      const std::map<std::string, std::string> &renames) {
     int changed = 0;
     DIR *dir = opendir(folder.c_str());
     if (!dir) return 0;
@@ -47,18 +51,39 @@ int setBundleVersions(const std::string &folder, const std::string &version) {
             std::string data;
             jvalue plist;
             bool binary = false;
-            if (ZFile::ReadFile(plistPath.c_str(), data) && plist.read_plist(data, NULL, &binary) &&
-                plist.has("CFBundleVersion")) {
-                plist["CFBundleVersion"] = version;
-                bool written = binary ? plist.write_bplist_to_file("%s", plistPath.c_str())
-                                      : plist.style_write_plist_to_file("%s", plistPath.c_str());
-                if (written) {
-                    changed++;
+            if (ZFile::ReadFile(plistPath.c_str(), data) && plist.read_plist(data, NULL, &binary)) {
+                bool modified = false;
+                if (!version.empty() && plist.has("CFBundleVersion")) {
+                    plist["CFBundleVersion"] = version;
+                    modified = true;
                     ZLog::PrintV(">>> Build number:\t%s -> %s\n", name.c_str(), version.c_str());
+                }
+                auto rename = [&](jvalue &value, const char *label) {
+                    if (!value.is_string()) return;
+                    auto found = renames.find(value.as_string());
+                    if (found == renames.end()) return;
+                    ZLog::PrintV(">>> %s:\t%s -> %s\n", label, value.as_cstr(), found->second.c_str());
+                    value = found->second;
+                    modified = true;
+                };
+                if (!renames.empty()) {
+                    if (plist.has("CFBundleIdentifier")) rename(plist["CFBundleIdentifier"], "Bundle ID");
+                    if (plist.has("WKCompanionAppBundleIdentifier")) {
+                        rename(plist["WKCompanionAppBundleIdentifier"], "Companion app");
+                    }
+                    if (plist.has("NSExtension") && plist["NSExtension"].has("NSExtensionAttributes") &&
+                        plist["NSExtension"]["NSExtensionAttributes"].has("WKAppBundleIdentifier")) {
+                        rename(plist["NSExtension"]["NSExtensionAttributes"]["WKAppBundleIdentifier"], "Watch app");
+                    }
+                }
+                if (modified) {
+                    bool written = binary ? plist.write_bplist_to_file("%s", plistPath.c_str())
+                                          : plist.style_write_plist_to_file("%s", plistPath.c_str());
+                    if (written) changed++;
                 }
             }
         }
-        changed += setBundleVersions(path, version);
+        changed += rewriteInfoPlists(path, version, renames);
     }
     closedir(dir);
     return changed;
@@ -87,6 +112,8 @@ extern "C" int czsign_sign_ipa(const char *input_ipa,
                                int profile_count,
                                const char *temp_folder,
                                const char *bundle_version,
+                               const czsign_rename *renames,
+                               int rename_count,
                                czsign_log_callback log_callback,
                                void *log_context) {
     std::lock_guard<std::mutex> guard(g_signLock);
@@ -114,9 +141,15 @@ extern "C" int czsign_sign_ipa(const char *input_ipa,
         return -3;
     }
 
-    if (bundle_version && *bundle_version) {
-        if (setBundleVersions(folder + "/Payload", bundle_version) == 0) {
-            ZLog::Warn(">>> Couldn't set the build number; signing with the original.\n");
+    std::map<std::string, std::string> renameMap;
+    for (int i = 0; renames && i < rename_count; i++) {
+        std::string oldId = safe(renames[i].old_id), newId = safe(renames[i].new_id);
+        if (!oldId.empty() && !newId.empty() && oldId != newId) renameMap[oldId] = newId;
+    }
+    std::string version = safe(bundle_version);
+    if (!version.empty() || !renameMap.empty()) {
+        if (rewriteInfoPlists(folder + "/Payload", version, renameMap) == 0) {
+            ZLog::Warn(">>> Couldn't update Info.plist files; signing with the original values.\n");
         }
     }
 

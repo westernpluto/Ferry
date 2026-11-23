@@ -22,6 +22,8 @@ enum SettingsKey {
     // New key: the default changed from 127.0.0.1, which iOS's installer won't fetch from.
     static let host = "localHostName"
     static let remoteBaseURL = "remoteBaseURL"
+    /// The Apple TV tvOS apps were last installed on.
+    static let appleTVTarget = "appleTVTarget"
 }
 
 enum SettingsDefault {

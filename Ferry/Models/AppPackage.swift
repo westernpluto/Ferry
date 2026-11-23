@@ -22,6 +22,11 @@ struct BundleInfo: Codable, Hashable, Sendable {
         platformName?.lowercased() == "watchos" || deviceFamilies == [4]
     }
 
+    /// An Apple TV app: installed with Ferry's Apple TV support, not over the air.
+    var isTVOSApp: Bool {
+        platformName?.lowercased().hasPrefix("appletv") == true || deviceFamilies == [3]
+    }
+
     init(path: String, plist: [String: Any], hasCodeSignature: Bool, profile: ProvisioningProfile?) {
         self.path = path
         bundleIdentifier = plist["CFBundleIdentifier"] as? String ?? "unknown"
@@ -60,7 +65,12 @@ struct AppPackage: Codable, Identifiable, Hashable {
     /// App extensions anywhere in the IPA (`.appex`). Nil for packages imported by older versions.
     var extensions: [BundleInfo]?
 
+    /// The source this app was added or last updated from, so updates can be found.
+    var sourceLink: SourceLink?
+
     var title: String { watchApps.first?.displayName ?? container.displayName }
+
+    var isAppleTVApp: Bool { container.isTVOSApp }
 
     /// Every bundle that needs its own provisioning profile when signing.
     var signableBundles: [BundleInfo] { [container] + watchApps + (extensions ?? []) }
@@ -84,4 +94,10 @@ struct PackageIssue: Hashable, Identifiable {
     /// True when re-signing the app with your own certificate would resolve it.
     var isSigning = false
     var id: String { "\(severity.rawValue)-\(message)" }
+}
+
+/// Where an app in the library comes from: one app in an AltStore-style source.
+struct SourceLink: Codable, Hashable {
+    var sourceURL: URL
+    var bundleIdentifier: String
 }

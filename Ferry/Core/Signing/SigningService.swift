@@ -71,6 +71,9 @@ enum SigningService {
                 .write(to: entitlementsURL)
             profiles.append(ZSignProfile(profileURL: profileURL, entitlementsURL: entitlementsURL))
             log("\(assignment.bundle.displayName) → \(assignment.profile.profile.name)", false)
+            if assignment.changesBundleIdentifier {
+                log("\(assignment.bundle.bundleIdentifier) → \(assignment.bundleIdentifier)", false)
+            }
         }
 
         var bundleVersion: String?
@@ -89,6 +92,7 @@ enum SigningService {
             profiles: profiles,
             temporaryDirectory: work,
             bundleVersion: bundleVersion,
+            bundleIdentifierChanges: job.plan.bundleIdentifierChanges,
             log: log
         )
 

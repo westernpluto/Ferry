@@ -6,6 +6,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  atv-bridge:
+    name: Apple TV bridge (Rust) checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Packages/ATVBridge
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Packages/ATVBridge
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
   build:
     # GitHub names macOS images after their Xcode version. `xcode-27` is the macOS 27
     # image (Apple silicon) with Xcode 27.x and the iPhone Duo simulator.
@@ -25,6 +41,16 @@ jobs:
           if [ "$(printf '%s\n' 27.1 "$MACOS" | sort -V | head -1)" != "27.1" ]; then
             echo "::notice::Runner is on macOS $MACOS (older than 27.1). Xcode 27.1 and the iOS 27.1 SDK are what iPhone Duo builds need."
           fi
+
+      - name: Rust toolchain
+        run: rustup update stable && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: Packages/ATVBridge
+
+      - name: Build Apple TV bridge
+        run: scripts/build-atv-bridge.sh
 
       - name: Install XcodeGen
         run: brew install xcodegen

@@ -29,6 +29,12 @@ targets:
     dependencies:
       - package: ZIPFoundation
       - package: ZSignKit
+      # Apple TV pairing/install (Rust, Packages/ATVBridge). Build it first:
+      #   scripts/build-atv-bridge.sh
+      - framework: Frameworks/ATVBridge.xcframework
+        embed: false
+      - sdk: Network.framework
+      - sdk: Security.framework
     info:
       path: Ferry/Info.plist
       properties:
@@ -45,6 +51,10 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIFileSharingEnabled: true
+        NSLocalNetworkUsageDescription: Ferry connects to Apple TVs on your network to pair with them and install apps.
+        NSBonjourServices:
+          - _remotepairing._tcp
+          - _remotepairing-manual-pairing._tcp
         LSSupportsOpeningDocumentsInPlace: false
         CFBundleDocumentTypes:
           - CFBundleTypeName: iOS App Archive
@@ -77,6 +87,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # The Rust Apple TV bridge needs libresolv.
+        OTHER_LDFLAGS: ["-lresolv"]
 
   FerryTests:
     type: bundle.unit-test

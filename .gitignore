@@ -10,3 +10,5 @@ local-cert/
 .swiftpm/
 Package.resolved
 __pycache__/
+Packages/ATVBridge/target/
+Frameworks/

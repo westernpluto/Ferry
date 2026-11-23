@@ -24,3 +24,11 @@ Each change is marked `[Ferry patch]` in the source:
 3. `openssl.cpp`: when an entitlements file is given, its `application-identifier` decides which
    bundle the profile signs. This lets one wildcard profile sign each bundle with its own concrete
    App ID (`TEAMID.com.example.app.watchkitapp`), as Xcode does.
+
+## Ferry's additions to the bridge
+
+`bridge.cpp` rewrites Info.plists before signing: an optional new `CFBundleVersion` for every
+bundle, and bundle ID changes (`czsign_rename`, old → new) applied to `CFBundleIdentifier`,
+`WKCompanionAppBundleIdentifier` and `NSExtension › NSExtensionAttributes › WKAppBundleIdentifier`.
+Only exact matches are changed, so unrelated IDs are left alone.
+

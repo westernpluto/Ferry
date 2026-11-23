@@ -4,6 +4,8 @@ import UIKit
 enum InstallTarget {
     case local(host: String, port: Int)
     case remote(baseURL: String)
+    /// Upload to a paired Apple TV and install it there (tvOS apps).
+    case appleTV(UUID)
 }
 
 /// Signs (optionally) and installs an IPA over the air, including the watch app inside it.
@@ -17,6 +19,8 @@ final class InstallCoordinator: ObservableObject {
         case transferring(Double)
         case readyToUpload
         case handedOff
+        /// Finished somewhere other than this iPhone (an Apple TV).
+        case done(String)
         case failed(String)
 
         var isBusy: Bool {
@@ -38,6 +42,9 @@ final class InstallCoordinator: ObservableObject {
     @Published private(set) var log: [LogLine] = []
     @Published private(set) var exportedFiles: [URL] = []
     @Published private(set) var remoteInstallURL: URL?
+
+    /// Set by the app; used for `.appleTV` installs.
+    weak var appleTV: AppleTVStore?
 
     private let server = LocalHTTPSServer()
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
@@ -87,6 +94,8 @@ final class InstallCoordinator: ObservableObject {
                 self.serveLocally(package, fileURL: fileURL, host: host, port: port)
             case .remote(let baseURL):
                 self.prepareRemote(package, fileURL: fileURL, baseURL: baseURL)
+            case .appleTV(let deviceID):
+                await self.installOnAppleTV(package, fileURL: fileURL, deviceID: deviceID)
             }
         }
     }
@@ -173,6 +182,37 @@ final class InstallCoordinator: ObservableObject {
         } catch {
             return "Couldn't reach Ferry's install server: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Apple TV install
+
+    private func installOnAppleTV(_ package: AppPackage, fileURL: URL, deviceID: UUID) async {
+        guard let appleTV, let device = appleTV.device(deviceID) else {
+            fail("That Apple TV isn't paired any more. Pair it in Settings › Apple TV.")
+            return
+        }
+        phase = .transferring(0)
+        append("Connecting to \(device.displayName)…")
+        beginBackgroundTask()
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = false }
+        do {
+            try await appleTV.install(deviceID, ipa: fileURL) { progress in
+                Task { @MainActor [weak self] in
+                    guard let self, case .transferring = self.phase else { return }
+                    self.phase = .transferring(progress.fraction)
+                    self.detail = "\(progress.status)… \(progress.percent)%"
+                }
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            fail("Apple TV install failed: \(error.localizedDescription)")
+            return
+        }
+        detail = nil
+        phase = .done("Installed on \(device.displayName). Find it on the Apple TV's Home Screen.")
+        append("Installed \(package.title) on \(device.displayName).")
+        endBackgroundTask()
     }
 
     // MARK: - Remote install

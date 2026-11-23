@@ -32,7 +32,7 @@ struct InstallView: View {
                     }
                 }
 
-                if !package.watchApps.isEmpty {
+                if !package.watchApps.isEmpty && !package.isAppleTVApp {
                     Section("Apple Watch") {
                         Text("After the iPhone app installs, the watch app installs automatically if Automatic App Install is on. Otherwise, open the Watch app › My Watch › Available Apps and tap Install.")
                             .font(.callout)
@@ -80,12 +80,22 @@ struct InstallView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Installing…").font(.headline)
                 ProgressView(value: fraction)
+                if let detail = installer.detail {
+                    Text(detail).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                if package.isAppleTVApp {
+                    Text("Keep Ferry open until this finishes.").font(.caption).foregroundStyle(.secondary)
+                }
             }
         case .readyToUpload:
             Label("Ready to upload", systemImage: "icloud.and.arrow.up")
                 .font(.headline)
         case .handedOff:
             Label("Installing on your iPhone. Check the Home Screen.", systemImage: "checkmark.circle.fill")
+                .font(.headline)
+                .foregroundStyle(.green)
+        case .done(let message):
+            Label(message, systemImage: "checkmark.circle.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
         case .failed(let message):

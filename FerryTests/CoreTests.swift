@@ -244,6 +244,131 @@ final class LocalCertificateTests: XCTestCase {
     }
 }
 
+final class SigningOverrideTests: XCTestCase {
+    private func stored(_ appID: String, team: String = "ABCDE12345") throws -> StoredProfile {
+        var profile = try ProvisioningProfile.parse(TestData.profileBlob(devices: ["abc"]))
+        profile.applicationIdentifier = appID
+        profile.teamIdentifiers = [team]
+        return StoredProfile(id: UUID(), fileName: "x", profile: profile, importedAt: Date())
+    }
+
+    func testOverrideRenamesBundlesAndMatchesProfiles() throws {
+        let package = try TestData.package()
+        var choices = SigningOverride()
+        choices.rebase(package, to: "com.me.app")
+        XCTAssertEqual(choices.bundleIdentifiers, [
+            "com.example.app": "com.me.app",
+            "com.example.app.watchkitapp": "com.me.app.watchkitapp",
+        ])
+
+        let mine = try stored("TEAM999999.com.me.*", team: "TEAM999999")
+        XCTAssertFalse(SigningPlanner.plan(for: package, profiles: [mine], certificateFingerprint: nil).isComplete)
+        let plan = SigningPlanner.plan(for: package, profiles: [mine], certificateFingerprint: nil, override: choices)
+        XCTAssertTrue(plan.isComplete)
+        XCTAssertEqual(plan.bundleIdentifierChanges["com.example.app.watchkitapp"], "com.me.app.watchkitapp")
+        let watch = try XCTUnwrap(plan.assignments.first { $0.bundle.isWatchApp })
+        XCTAssertEqual(watch.applicationIdentifier, "TEAM999999.com.me.app.watchkitapp")
+    }
+
+    func testTeamFilter() throws {
+        let package = try TestData.package()
+        let other = try stored("OTHER00000.*", team: "OTHER00000")
+        let chosen = try stored("ABCDE12345.*")
+        var choices = SigningOverride()
+        choices.teamIdentifier = "ABCDE12345"
+        let plan = SigningPlanner.plan(for: package, profiles: [other, chosen], certificateFingerprint: nil, override: choices)
+        XCTAssertTrue(plan.isComplete)
+        XCTAssertTrue(plan.assignments.allSatisfy { $0.profile.id == chosen.id })
+        choices.teamIdentifier = "NOBODY0000"
+        XCTAssertFalse(SigningPlanner.plan(for: package, profiles: [other, chosen], certificateFingerprint: nil, override: choices).isComplete)
+    }
+
+    func testMatchMyProfilesUsesWildcard() throws {
+        let package = try TestData.package()
+        let wildcard = try stored("TEAM999999.com.me.*", team: "TEAM999999")
+        let suggestion = try XCTUnwrap(SigningPlanner.suggestOverride(for: package, profiles: [wildcard], certificateFingerprint: nil))
+        XCTAssertEqual(suggestion.bundleIdentifier(for: "com.example.app"), "com.me.app")
+        XCTAssertEqual(suggestion.bundleIdentifier(for: "com.example.app.watchkitapp"), "com.me.app.watchkitapp")
+        XCTAssertTrue(SigningPlanner.plan(for: package, profiles: [wildcard], certificateFingerprint: nil, override: suggestion).isComplete)
+    }
+
+    func testMatchMyProfilesUsesExplicitProfiles() throws {
+        let package = try TestData.package()
+        let app = try stored("TEAM999999.org.mine.app", team: "TEAM999999")
+        let watch = try stored("TEAM999999.org.mine.app.watchkitapp", team: "TEAM999999")
+        let suggestion = try XCTUnwrap(SigningPlanner.suggestOverride(for: package, profiles: [app, watch], certificateFingerprint: nil))
+        let plan = SigningPlanner.plan(for: package, profiles: [app, watch], certificateFingerprint: nil, override: suggestion)
+        XCTAssertTrue(plan.isComplete, "\(suggestion)")
+        XCTAssertEqual(plan.assignments.first { $0.bundle.isWatchApp }?.profile.id, watch.id)
+    }
+
+    func testNoSuggestionWithoutProfiles() throws {
+        XCTAssertNil(SigningPlanner.suggestOverride(for: try TestData.package(), profiles: [], certificateFingerprint: nil))
+    }
+}
+
+final class AltSourceTests: XCTestCase {
+    func testDecodesModernAndLegacyApps() throws {
+        let json = """
+        {
+          "name": "Test Source",
+          "identifier": "com.test.source",
+          "apps": [
+            {
+              "name": "Modern", "bundleIdentifier": "com.test.modern", "developerName": "Dev",
+              "versions": [
+                {"version": "2.0", "buildVersion": "20", "date": "2026-10-01T12:00:00Z",
+                 "downloadURL": "https://example.com/m2.ipa", "size": 1234},
+                {"version": "1.0", "date": "2025-01-01", "downloadURL": "https://example.com/m1.ipa"}
+              ]
+            },
+            {
+              "name": "Legacy", "bundleIdentifier": "com.test.legacy", "version": "3.1",
+              "versionDate": "2024-05-01", "downloadURL": "https://example.com/l.ipa", "size": "99"
+            },
+            { "name": "Broken" },
+            { "name": "No versions", "bundleIdentifier": "com.test.none", "versions": [{"version": "1"}] }
+          ],
+          "news": []
+        }
+        """
+        let source = try JSONDecoder().decode(AltSource.self, from: Data(json.utf8))
+        XCTAssertEqual(source.name, "Test Source")
+        XCTAssertEqual(source.apps.map(\.bundleIdentifier), ["com.test.modern", "com.test.legacy", "com.test.none"])
+        let modern = source.apps[0]
+        XCTAssertEqual(modern.latest?.version, "2.0")
+        XCTAssertEqual(modern.latest?.buildVersion, "20")
+        XCTAssertEqual(modern.latest?.size, 1234)
+        XCTAssertNotNil(modern.latest?.releaseDate)
+        XCTAssertNotNil(modern.versions[1].releaseDate)
+        let legacy = source.apps[1]
+        XCTAssertEqual(legacy.latest?.version, "3.1")
+        XCTAssertEqual(legacy.latest?.size, 99)
+        XCTAssertEqual(legacy.latest?.downloadURL.absoluteString, "https://example.com/l.ipa")
+        XCTAssertNil(source.apps[2].latest)
+
+        // Round-trips through the cache format.
+        let again = try JSONDecoder().decode(AltSource.self, from: JSONEncoder().encode(source))
+        XCTAssertEqual(again, source)
+    }
+
+    func testVersionComparison() {
+        XCTAssertTrue(AppVersion.isNewer(version: "1.10", build: nil, than: "1.9", installedBuild: "9"))
+        XCTAssertFalse(AppVersion.isNewer(version: "1.9", build: nil, than: "1.10", installedBuild: "1"))
+        XCTAssertFalse(AppVersion.isNewer(version: "2.0", build: nil, than: "2.0", installedBuild: "5"))
+        XCTAssertTrue(AppVersion.isNewer(version: "2.0", build: "6", than: "2.0", installedBuild: "5"))
+        XCTAssertFalse(AppVersion.isNewer(version: "2.0", build: "5", than: "2.0", installedBuild: "5"))
+    }
+
+    @MainActor
+    func testSourceLinks() {
+        XCTAssertEqual(SourceStore.sourceURL(from: " example.com/apps.json ")?.absoluteString, "https://example.com/apps.json")
+        XCTAssertEqual(SourceStore.sourceURL(from: "altstore://source?url=https://a.b/s.json")?.absoluteString, "https://a.b/s.json")
+        XCTAssertEqual(SourceStore.sourceURL(from: "feather://source/https://a.b/s.json")?.absoluteString, "https://a.b/s.json")
+        XCTAssertNil(SourceStore.sourceURL(from: "nonsense"))
+    }
+}
+
 enum TestData {
     static func profileBlob(devices: [String]?, getTaskAllow: Bool = false, allDevices: Bool = false) throws -> Data {
         var plist: [String: Any] = [

@@ -4,11 +4,65 @@ Ferry signs and installs your own iOS apps on your iPhone, without a Mac. Apple 
 them install on your paired watch too.
 
 1. Once: add your signing certificate (`.p12`) and provisioning profiles.
-2. Add an `.ipa` (from Xcode, CI or a colleague).
+2. Add an `.ipa` (from Xcode, CI or a colleague), or get one from a **source**.
 3. Tap **Sign & Install**. The app re-signs every bundle with your certificate, then iOS installs
    the iPhone app and watchOS installs the watch app.
 
-Apps that are already signed for your devices can be installed without signing.
+Apps that are already signed for your devices can be installed without signing. Apple TV apps
+(tvOS) are signed the same way and installed on a paired Apple TV over Wi-Fi (see *Apple TV*).
+
+## Sources and updates
+
+The **Sources** tab takes AltStore-style sources: a JSON file listing apps and their versions, the
+format AltStore, SideStore and Feather use. Add one by address (`altstore://source?url=…` links work
+too), tap **Get** on an app, and it's added to your library.
+
+Ferry checks your sources when it opens and when you pull down on a list. When a source has a newer
+version (higher version number, or the same version with a higher build number) of an app in your
+library, the app shows **Update** and the Apps tab gets a badge. Updating downloads the new IPA and
+**overwrites the app's IPA in place**: the library entry, its settings and its bundle ID choices stay,
+and no second copy is kept. Importing a file for an app that's already in the library does the same.
+Ferry also deletes the signed copy once an install finishes, and clears leftovers when it starts, so
+the library only ever holds one IPA per app.
+
+## Your own bundle IDs and team
+
+Some apps ask for bundle IDs or a team your profiles don't cover (for example a third-party app, or
+one whose extensions use a different team). On the app's page, under **Signing**:
+
+- **Match My Profiles** picks bundle IDs your profiles do cover. It prefers an explicit profile whose
+  App ID ends like the app's (`com.dev.Notes` → `com.you.Notes`), otherwise a wildcard profile
+  (`com.you.*` → `com.you.Notes`), moves the extensions and watch app along with it
+  (`….Notes.widget`), and keeps everything on one team.
+- **Bundle IDs & Team…** lets you set them yourself: the app's ID (extensions under it follow), any
+  extension individually (or pick one of your profiles' App IDs from the list), and the team whose
+  profiles are used. Each row shows which profile will sign it.
+
+Ferry rewrites `CFBundleIdentifier` (and the watch app's `WKCompanionAppBundleIdentifier` /
+`WKAppBundleIdentifier` references) before signing. Choices are saved per app, so updates from a
+source are signed the same way. An app signed under a new bundle ID installs alongside the original
+rather than replacing it, and App Groups, iCloud containers and other capabilities come from your
+profiles.
+
+## Apple TV
+
+Ferry can install tvOS apps on an Apple TV (tvOS 17 or later) on the same Wi-Fi, without a Mac or
+cable. It pairs the way Xcode does: open **Settings › Remotes and Devices › Remote App and Devices**
+on the TV, then in Ferry **Settings › Apple TV**, tap the TV and enter the code it shows. The pairing
+is kept in the Keychain.
+
+- The TV's page shows its **UDID** (tap to copy) for your provisioning profiles, its tvOS version,
+  and its installed apps, which you can remove.
+- Add a tvOS `.ipa` to the library (or from a source). Its page shows **Sign & Install on <TV>**:
+  Ferry signs it with your certificate and profiles (bundle ID choices apply here too), uploads it
+  and installs it, showing progress. With several TVs, pick one under the button.
+- Pair by IP address if the TV doesn't show up. Leave the port empty and Ferry asks the TV.
+- Ferry only asks for Local Network access once you open the Apple TV screen.
+
+This uses the open-source [`idevice`](https://github.com/jkcoxson/idevice) Rust library (MIT)
+through a small C bridge in `Packages/ATVBridge` (from iOStoATV): RemotePairing with the PIN, a
+CoreDevice tunnel, AFC to upload the IPA, then InstallationProxy to install it. If the TV refuses an
+app (`ApplicationVerificationFailed`), its profile doesn't include the TV's UDID.
 The layout adapts to the iPhone Duo: folded it's a single list, unfolded the app list and the
 selected app sit side by side.
 
@@ -71,7 +125,6 @@ deleted straight afterwards.
 
 Things signing can't change:
 
-- **Bundle IDs.** If you sign under a different team, you need profiles for the IPA's existing bundle IDs.
 - **App Store downloads.** These are encrypted and won't launch after re-signing. Use your own builds.
 - **Free Apple ID accounts.** No Ad Hoc profiles; Development profiles last 7 days.
 - **Developer Mode.** Development-signed apps need it on both the iPhone and the watch
@@ -140,10 +193,12 @@ can be added to the Home Screen. Signing and installing need internet.
 ## Building
 
 Requirements: **Xcode 27.1 or later** (the iOS 27.1 SDK makes the app fill both iPhone Duo displays),
-[XcodeGen](https://github.com/yonaskolb/XcodeGen), an iOS 16+ device.
+[XcodeGen](https://github.com/yonaskolb/XcodeGen), [rustup](https://rustup.rs) (for the Apple TV
+bridge), an iOS 16+ device.
 
 ```sh
 brew install xcodegen
+scripts/build-atv-bridge.sh   # -> Frameworks/ATVBridge.xcframework
 xcodegen generate
 open Ferry.xcodeproj
 ```
@@ -152,8 +207,8 @@ Select your team under *Signing & Capabilities*, change the bundle ID if necessa
 Dependencies (Swift Package Manager): [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) for reading IPAs,
 and the local `Packages/ZSignKit` (zsign + [OpenSSL](https://github.com/krzyzanowskim/OpenSSL-Package)) for signing.
 
-CI (`.github/workflows/build.yml`) runs on GitHub's `xcode-27` runner (macOS 27, Apple silicon) with
-Xcode 27.1. It generates the project, runs the unit tests on the **iPhone Duo** simulator and builds
+CI (`.github/workflows/build.yml`) checks the Rust bridge on Linux (`cargo fmt`, `clippy`, `test`), then
+on GitHub's `xcode-27` runner (macOS 27, Apple silicon) with Xcode 27.1 builds the bridge, generates the project, runs the unit tests on the **iPhone Duo** simulator and builds
 an unsigned IPA artifact. GitHub names these images after the Xcode version, so there's no
 `macos-27.1` label. The step log shows the exact macOS build.
 
@@ -219,10 +274,14 @@ The server needs a publicly trusted certificate (Let's Encrypt is fine).
 Ferry/
   App/       App entry point
   Core/      IPA inspection, validation, manifest, HTTPS server, Keychain, install flow
-  Core/Signing/  profile matching, entitlements, certificate/profile storage, signing
+  Core/Signing/  profile matching, bundle ID/team overrides, entitlements, certificate/profile storage, signing
+  Core/Sources/  AltStore-style sources: parsing, update checks, downloads
+  AppleTV/   Apple TV pairing, discovery and install (Swift side of Packages/ATVBridge)
   Models/    BundleInfo, AppPackage, ProvisioningProfile
   Views/     SwiftUI screens
 Packages/ZSignKit/        zsign-based signer (C++/OpenSSL) with a Swift API
+Packages/ATVBridge/       Rust C bridge over idevice for Apple TV pairing and installs
+scripts/build-atv-bridge.sh  builds Frameworks/ATVBridge.xcframework
 FerryTests/               Unit tests for parsing, validation, signing plans, manifest and HTTP handling
 scripts/make-local-cert.sh
 scripts/ci_sign_app.sh, ci_profile.py, build_site.py   CI signing and the install page

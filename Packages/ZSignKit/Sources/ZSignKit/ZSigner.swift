@@ -24,7 +24,8 @@ public struct ZSignError: LocalizedError, Sendable {
 }
 
 public enum ZSigner {
-    /// Re-signs every bundle in `input` and writes the result to `output`. Blocks until done;
+    /// Re-signs every bundle in `input` and writes the result to `output`.
+    /// `bundleIdentifierChanges` (old → new bundle ID) is applied to the Info.plists first. Blocks until done;
     /// call it off the main thread. `log` is called on the signing thread.
     public static func signIPA(
         input: URL,
@@ -35,6 +36,7 @@ public enum ZSigner {
         profiles: [ZSignProfile],
         temporaryDirectory: URL,
         bundleVersion: String? = nil,
+        bundleIdentifierChanges: [String: String] = [:],
         log: @escaping @Sendable (_ message: String, _ isError: Bool) -> Void
     ) throws {
         let box = LogBox(handler: log)
@@ -69,12 +71,18 @@ public enum ZSigner {
         let passwordValue = password.map { cString($0) }
         let tempPath = cString(temporaryDirectory.path)
         let versionValue = bundleVersion.map { cString($0) }
+        let cRenames = bundleIdentifierChanges.sorted { $0.key < $1.key }.map {
+            czsign_rename(old_id: cString($0.key), new_id: cString($0.value))
+        }
 
         let result = cProfiles.withUnsafeBufferPointer { buffer in
-            czsign_sign_ipa(
-                inputPath, outputPath, keyPath, certificatePath, passwordValue,
-                buffer.baseAddress, Int32(buffer.count), tempPath, versionValue, callback, context
-            )
+            cRenames.withUnsafeBufferPointer { renames in
+                czsign_sign_ipa(
+                    inputPath, outputPath, keyPath, certificatePath, passwordValue,
+                    buffer.baseAddress, Int32(buffer.count), tempPath, versionValue,
+                    renames.baseAddress, Int32(renames.count), callback, context
+                )
+            }
         }
         guard result == 0 else {
             throw ZSignError(code: result, messages: box.errors)

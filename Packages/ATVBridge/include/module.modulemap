@@ -1,0 +1,4 @@
+module ATVBridge {
+    header "atvbridge.h"
+    export *
+}

@@ -65,6 +65,12 @@ jobs:
       - name: Select Xcode 27.1
         run: sudo xcode-select -s /Applications/Xcode_27.1.app
 
+      - name: Rust toolchain
+        run: rustup update stable && rustup default stable
+
+      - name: Build Apple TV bridge
+        run: scripts/build-atv-bridge.sh
+
       - name: Generate project
         run: |
           brew install xcodegen

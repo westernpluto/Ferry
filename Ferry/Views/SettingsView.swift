@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var signing: SigningStore
+    @EnvironmentObject private var appleTV: AppleTVStore
     @AppStorage(SettingsKey.mode) private var mode: InstallMode = .local
 
     var body: some View {
@@ -28,8 +29,17 @@ struct SettingsView: View {
                             Label("Install Method", systemImage: "arrow.down.circle")
                         }
                     }
+                    NavigationLink {
+                        AppleTVListView()
+                    } label: {
+                        LabeledContent {
+                            Text(appleTV.devices.isEmpty ? "None paired" : "\(appleTV.devices.count) paired")
+                        } label: {
+                            Label("Apple TV", systemImage: "appletv")
+                        }
+                    }
                 } footer: {
-                    Text("Signing lets you install your own builds with your certificate. Install Method controls how the app hands the IPA to iOS.")
+                    Text("Signing lets you install your own builds with your certificate. Install Method controls how the app hands the IPA to iOS. Apple TV pairs Ferry with your Apple TVs so it can install tvOS apps on them.")
                 }
             }
             .navigationTitle("Settings")

@@ -13,6 +13,14 @@ typedef struct {
     const char *entitlements_path;
 } czsign_profile;
 
+/// Changes one bundle ID before signing: every .app/.appex whose CFBundleIdentifier is `old_id`
+/// gets `new_id`, and references to `old_id` in WKCompanionAppBundleIdentifier and
+/// NSExtension › NSExtensionAttributes › WKAppBundleIdentifier are updated to match.
+typedef struct {
+    const char *old_id;
+    const char *new_id;
+} czsign_rename;
+
 /// Receives zsign's log output, one message at a time. `is_error` is non-zero for errors.
 typedef void (*czsign_log_callback)(void *context, int is_error, const char *message);
 
@@ -24,6 +32,7 @@ typedef void (*czsign_log_callback)(void *context, int is_error, const char *mes
 /// - temp_folder: an existing, writable folder for the extracted app.
 /// - bundle_version: if not NULL, CFBundleVersion of every app and extension is set to it
 ///   before signing (so an iPhone app and its watch app keep matching build numbers).
+/// - renames / rename_count: bundle IDs to change before signing (may be NULL / 0).
 /// Returns 0 on success.
 int czsign_sign_ipa(const char *input_ipa,
                     const char *output_ipa,
@@ -34,6 +43,8 @@ int czsign_sign_ipa(const char *input_ipa,
                     int profile_count,
                     const char *temp_folder,
                     const char *bundle_version,
+                    const czsign_rename *renames,
+                    int rename_count,
                     czsign_log_callback log_callback,
                     void *log_context);
 
