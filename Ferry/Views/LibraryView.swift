@@ -6,6 +6,7 @@ struct LibraryView: View {
     @EnvironmentObject private var store: PackageStore
     @EnvironmentObject private var signing: SigningStore
     @EnvironmentObject private var sources: SourceStore
+    @EnvironmentObject private var history: InstallHistory
 
     @State private var selection: AppPackage.ID?
     @State private var showingImporter = false
@@ -69,7 +70,12 @@ struct LibraryView: View {
 
             Section {
                 ForEach(store.packages) { package in
-                    PackageRow(package: package, update: sources.update(for: package), progress: sources.downloads[package.sourceLink?.bundleIdentifier ?? package.container.bundleIdentifier])
+                    PackageRow(
+                        package: package,
+                        update: sources.update(for: package),
+                        progress: sources.downloads[package.sourceLink?.bundleIdentifier ?? package.container.bundleIdentifier],
+                        installs: history.records(for: package).map { (record: $0, status: history.status(of: $0, packages: store.packages, sources: sources)) }
+                    )
                         .tag(package.id)
                 }
                 .onDelete { offsets in
@@ -145,6 +151,17 @@ private struct PackageRow: View {
     let package: AppPackage
     var update: SourceStore.Update?
     var progress: Double?
+    var installs: [(record: InstallRecord, status: InstallStatus)] = []
+
+    /// "1.2 on iPhone, Living Room" plus what needs doing, if anything.
+    private var installLine: (text: String, attention: Bool)? {
+        guard !installs.isEmpty else { return nil }
+        let places = installs.map { "\($0.record.version) on \($0.record.destination.title)" }.joined(separator: ", ")
+        if let status = installs.first(where: { $0.status.needsAttention })?.status, let summary = status.summary {
+            return ("\(places) · \(summary)", true)
+        }
+        return ("Installed: \(places)", false)
+    }
 
     private var platform: String {
         if package.isAppleTVApp { return "Apple TV" }
@@ -163,6 +180,12 @@ private struct PackageRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let installLine {
+                    Text(installLine.text)
+                        .font(.caption2)
+                        .foregroundStyle(installLine.attention ? Color.orange : Color.secondary)
+                        .lineLimit(1)
+                }
                 if let progress {
                     ProgressView(value: progress)
                 } else if let update {

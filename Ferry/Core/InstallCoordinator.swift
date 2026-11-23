@@ -45,6 +45,11 @@ final class InstallCoordinator: ObservableObject {
 
     /// Set by the app; used for `.appleTV` installs.
     weak var appleTV: AppleTVStore?
+    /// Set by the app; finished installs are noted here.
+    weak var history: InstallHistory?
+
+    /// The install in progress: the library entry, what's being installed, and where.
+    private var current: (original: AppPackage, installed: AppPackage, destination: InstallRecord.Destination)?
 
     private let server = LocalHTTPSServer()
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
@@ -63,6 +68,7 @@ final class InstallCoordinator: ObservableObject {
     /// Signs the package when `signing` is given, then installs it.
     func start(_ package: AppPackage, fileURL: URL, signing: SigningJob?, target: InstallTarget) {
         reset()
+        let original = package
         runTask = Task { [weak self] in
             guard let self else { return }
             var package = package
@@ -88,6 +94,14 @@ final class InstallCoordinator: ObservableObject {
                     return
                 }
             }
+
+            let destination: InstallRecord.Destination
+            if case .appleTV(let id) = target {
+                destination = .appleTV(id: id, name: self.appleTV?.device(id)?.displayName ?? "Apple TV")
+            } else {
+                destination = .iPhone
+            }
+            self.current = (original: original, installed: package, destination: destination)
 
             switch target {
             case .local(let host, let port):
@@ -212,7 +226,10 @@ final class InstallCoordinator: ObservableObject {
         detail = nil
         phase = .done("Installed on \(device.displayName). Find it on the Apple TV's Home Screen.")
         append("Installed \(package.title) on \(device.displayName).")
+        recordCurrentInstall(confirmed: true)
         endBackgroundTask()
+        // Refresh the TV's app list so its installed versions are up to date.
+        _ = try? await appleTV.listApps(deviceID)
     }
 
     // MARK: - Remote install
@@ -275,6 +292,7 @@ final class InstallCoordinator: ObservableObject {
         log.removeAll()
         exportedFiles.removeAll()
         remoteInstallURL = nil
+        current = nil
     }
 
     func openWatchApp() {
@@ -293,12 +311,22 @@ final class InstallCoordinator: ObservableObject {
             guard let self else { return }
             if opened {
                 if self.phase == .serving { self.phase = .waitingForInstaller }
-                if self.phase == .readyToUpload { self.phase = .handedOff }
+                if self.phase == .readyToUpload {
+                    self.phase = .handedOff
+                    self.recordCurrentInstall(confirmed: false)
+                }
                 self.append("Tap Install if iOS asks.")
             } else {
                 self.fail("iOS refused the install link.")
             }
         }
+    }
+
+    private func recordCurrentInstall(confirmed: Bool) {
+        guard let current else { return }
+        history?.recordInstall(original: current.original, installed: current.installed,
+                               destination: current.destination, confirmed: confirmed)
+        self.current = nil
     }
 
     private func signingLog(_ message: String, isError: Bool) {
@@ -337,6 +365,7 @@ final class InstallCoordinator: ObservableObject {
             phase = .transferring(Double(sent) / Double(total))
         case .transferFinished:
             phase = .handedOff
+            recordCurrentInstall(confirmed: false)
             append("Sent to iOS. It installs on your iPhone, then your Apple Watch.")
             scheduleStop(after: 20)
         }

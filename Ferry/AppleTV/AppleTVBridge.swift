@@ -56,6 +56,7 @@ struct AppleTVApp: Codable, Hashable, Identifiable {
     var bundleId: String
     var name: String
     var version: String?
+    var build: String?
     var id: String { bundleId }
 }
 

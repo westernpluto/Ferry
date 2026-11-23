@@ -8,6 +8,7 @@ struct PackageDetailView: View {
     @EnvironmentObject private var installer: InstallCoordinator
     @EnvironmentObject private var sources: SourceStore
     @EnvironmentObject private var appleTV: AppleTVStore
+    @EnvironmentObject private var history: InstallHistory
     @AppStorage(SettingsKey.appleTVTarget) private var appleTVTarget = ""
     @AppStorage(SettingsKey.mode) private var mode: InstallMode = .local
     @AppStorage(SettingsKey.port) private var port = SettingsDefault.port
@@ -61,6 +62,24 @@ struct PackageDetailView: View {
 
             if let update {
                 updateSection(update)
+            }
+
+            let installs = history.records(for: package)
+            if !installs.isEmpty {
+                Section {
+                    ForEach(installs) { record in
+                        InstallRecordRow(record: record, status: history.status(of: record, packages: store.packages, sources: sources))
+                            .swipeActions {
+                                Button("Forget", role: .destructive) { history.forget(record) }
+                            }
+                    }
+                } header: {
+                    Text("Installed")
+                } footer: {
+                    Text(installs.contains { !$0.confirmed }
+                         ? "iOS doesn't let apps see what's installed, so iPhone entries show what Ferry last sent. Swipe to forget one you've deleted. Apple TV entries come from the TV."
+                         : "Read from the Apple TV.")
+                }
             }
 
             if let plan {

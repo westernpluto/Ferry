@@ -165,6 +165,8 @@ struct AppleTVDeviceView: View {
     let deviceID: UUID
     @EnvironmentObject private var appleTV: AppleTVStore
     @EnvironmentObject private var store: PackageStore
+    @EnvironmentObject private var history: InstallHistory
+    @EnvironmentObject private var sources: SourceStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var apps: [AppleTVApp] = []
@@ -295,6 +297,9 @@ struct AppleTVDeviceView: View {
                         Text([app.bundleId, app.version].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption).foregroundStyle(.secondary)
                             .lineLimit(1)
+                        if let summary = status(of: app)?.summary {
+                            Text(summary).font(.caption.bold()).foregroundStyle(.orange)
+                        }
                     }
                     Spacer()
                     if busyBundle == app.bundleId { ProgressView() }
@@ -327,6 +332,14 @@ struct AppleTVDeviceView: View {
                  ? "Add a tvOS .ipa to your library (or get one from a source), then install it from its page."
                  : "To install, open an Apple TV app in your library and tap Install on Apple TV.")
         }
+    }
+
+    /// Update / expiry status for an app on this TV, if Ferry knows where it comes from.
+    private func status(of app: AppleTVApp) -> InstallStatus? {
+        guard let record = history.records.first(where: {
+            $0.destination.key == deviceID.uuidString && $0.installedBundleIdentifier == app.bundleId
+        }) else { return nil }
+        return history.status(of: record, packages: store.packages, sources: sources)
     }
 
     private func reload() async {

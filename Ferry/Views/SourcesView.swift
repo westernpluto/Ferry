@@ -6,8 +6,15 @@ import UIKit
 struct SourcesView: View {
     @EnvironmentObject private var sources: SourceStore
     @EnvironmentObject private var store: PackageStore
+    @EnvironmentObject private var history: InstallHistory
+    @EnvironmentObject private var appleTV: AppleTVStore
 
     @State private var showingAdd = false
+    @State private var openPackage: AppPackage?
+
+    private var installed: [(record: InstallRecord, status: InstallStatus)] {
+        history.needingAttention(packages: store.packages, sources: sources)
+    }
 
     private var updates: [(package: AppPackage, update: SourceStore.Update)] {
         store.packages.compactMap { package in sources.update(for: package).map { (package: package, update: $0) } }
@@ -16,6 +23,18 @@ struct SourcesView: View {
     var body: some View {
         NavigationStack {
             List {
+                if !installed.isEmpty {
+                    Section {
+                        ForEach(installed, id: \.record.id) { item in
+                            installedRow(item.record, item.status)
+                        }
+                    } header: {
+                        Text("Installed Apps")
+                    } footer: {
+                        Text("Apps Ferry installed that are out of date or about to expire. Tap one to install the new version. Apple TV apps are read from the TV itself.")
+                    }
+                }
+
                 if !updates.isEmpty {
                     Section {
                         ForEach(updates, id: \.package.id) { item in
@@ -23,7 +42,7 @@ struct SourcesView: View {
                         }
                     } header: {
                         HStack {
-                            Text("Updates")
+                            Text("Library Updates")
                             Spacer()
                             Button("Update All") { updateAll() }
                                 .font(.caption.bold())
@@ -60,7 +79,20 @@ struct SourcesView: View {
                 }
             }
             .navigationTitle("Sources")
-            .refreshable { await sources.refresh() }
+            .refreshable {
+                await sources.refresh()
+                if !appleTV.devices.isEmpty { await appleTV.refreshInstalledApps() }
+            }
+            .sheet(item: $openPackage) { package in
+                NavigationStack {
+                    PackageDetailView(package: store.packages.first { $0.id == package.id } ?? package)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { openPackage = nil }
+                            }
+                        }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     if sources.isRefreshing { ProgressView() } else { EditButton() }
@@ -76,6 +108,30 @@ struct SourcesView: View {
             .sheet(isPresented: $showingAdd) {
                 AddSourceView()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func installedRow(_ record: InstallRecord, _ status: InstallStatus) -> some View {
+        if let package = history.package(for: record, in: store.packages) {
+            Button {
+                openPackage = package
+            } label: {
+                HStack {
+                    InstallRecordRow(record: record, status: status)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
+        } else if let match = sources.sourceApp(bundleIdentifier: record.originalBundleIdentifier, link: record.sourceLink) {
+            HStack {
+                InstallRecordRow(record: record, status: status)
+                Spacer()
+                SourceAppButton(app: match.app, sourceURL: match.sourceURL)
+            }
+        } else {
+            InstallRecordRow(record: record, status: status)
         }
     }
 
@@ -374,5 +430,51 @@ struct SourceIcon: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+    }
+}
+
+/// One installed app: where it is, which version, and what's available.
+struct InstallRecordRow: View {
+    let record: InstallRecord
+    let status: InstallStatus
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(status.needsAttention ? Color.orange : Color.accentColor)
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(record.title).font(.headline).lineLimit(1)
+                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                if let summary = status.summary {
+                    Text(summary)
+                        .font(.caption.bold())
+                        .foregroundStyle(status.expired ? Color.red : status.availableVersion != nil ? Color.accentColor : Color.orange)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var icon: String {
+        switch record.destination {
+        case .iPhone: return "iphone"
+        case .appleTV: return "appletv.fill"
+        }
+    }
+
+    private var detail: String {
+        var parts = ["\(record.version) on \(record.destination.title)"]
+        if let date = record.installedAt {
+            parts.append((record.confirmed ? "installed " : "sent ") + date.formatted(date: .abbreviated, time: .omitted))
+        }
+        if let expiry = record.expiresAt, !status.expired {
+            parts.append("expires " + expiry.formatted(date: .abbreviated, time: .omitted))
+        }
+        if record.installedBundleIdentifier != record.originalBundleIdentifier {
+            parts.append(record.installedBundleIdentifier)
+        }
+        return parts.joined(separator: " · ")
     }
 }

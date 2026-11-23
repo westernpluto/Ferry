@@ -369,6 +369,86 @@ final class AltSourceTests: XCTestCase {
     }
 }
 
+final class InstallHistoryTests: XCTestCase {
+    private func record(version: String, build: String, expires: Date? = nil) -> InstallRecord {
+        InstallRecord(title: "App", packageID: nil, originalBundleIdentifier: "com.example.app",
+                      installedBundleIdentifier: "com.example.app", version: version, build: build,
+                      installedAt: Date(), expiresAt: expires, destination: .iPhone)
+    }
+
+    private func version(_ value: String, build: String? = nil) -> AltSource.Version {
+        AltSource.Version(version: value, buildVersion: build, date: nil, localizedDescription: nil,
+                          downloadURL: URL(string: "https://example.com/a.ipa")!, size: nil, minOSVersion: nil)
+    }
+
+    func testStatus() throws {
+        var package = try TestData.package() // version 1.0, build 1.0
+        let installed = record(version: "1.0", build: "1.0")
+        XCTAssertFalse(InstallStatus.check(installed, library: package, sourceVersion: version("1.0")).needsAttention)
+
+        let fromSource = InstallStatus.check(installed, library: package, sourceVersion: version("1.1"))
+        XCTAssertEqual(fromSource.availableVersion, "1.1")
+        XCTAssertFalse(fromSource.availableInLibrary)
+
+        package.container.shortVersion = "1.1"
+        let downloaded = InstallStatus.check(installed, library: package, sourceVersion: version("1.1"))
+        XCTAssertEqual(downloaded.availableVersion, "1.1")
+        XCTAssertTrue(downloaded.availableInLibrary)
+
+        let libraryOnly = InstallStatus.check(installed, library: package, sourceVersion: nil)
+        XCTAssertEqual(libraryOnly.availableVersion, "1.1")
+        XCTAssertTrue(libraryOnly.availableInLibrary)
+
+        let soon = InstallStatus.check(record(version: "1.0", build: "1.0", expires: Date().addingTimeInterval(3600)), library: nil, sourceVersion: nil)
+        XCTAssertTrue(soon.expiresSoon && !soon.expired)
+        let gone = InstallStatus.check(record(version: "1.0", build: "1.0", expires: Date().addingTimeInterval(-60)), library: nil, sourceVersion: nil)
+        XCTAssertTrue(gone.expired)
+    }
+
+    @MainActor
+    func testRecordAndReconcileAppleTV() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let history = InstallHistory(directory: folder)
+        let package = try TestData.package()
+        let tv = UUID()
+
+        // Installed by Ferry under a different bundle ID.
+        var signed = package
+        signed.container.bundleIdentifier = "com.me.app"
+        history.recordInstall(original: package, installed: signed, destination: .appleTV(id: tv, name: "Den"), confirmed: true)
+        history.recordInstall(original: package, installed: signed, destination: .iPhone, confirmed: false)
+        XCTAssertEqual(history.records.count, 2)
+
+        // The TV still has it, at the same version; and it has a source app Ferry didn't install.
+        let sourceApp = AltSource.App(name: "Other", bundleIdentifier: "com.other.tv", developerName: nil, subtitle: nil,
+                                      localizedDescription: nil, iconURL: nil, versions: [])
+        let reconcileWith: ([AppleTVApp]) -> Void = { apps in
+            history.reconcile(appleTV: tv, name: "Den", apps: apps, packages: [package], overrides: [:]) { id in
+                id == "com.other.tv" ? (URL(string: "https://example.com/s.json")!, sourceApp) : nil
+            }
+        }
+        reconcileWith([
+            AppleTVApp(bundleId: "com.me.app", name: "App", version: "1.0", build: "1.28000000"),
+            AppleTVApp(bundleId: "com.other.tv", name: "Other", version: "2.0", build: "5"),
+            AppleTVApp(bundleId: "com.unrelated", name: "Unrelated", version: "1", build: "1"),
+        ])
+        let onTV = history.records.filter { $0.destination.key == tv.uuidString }
+        XCTAssertEqual(Set(onTV.map(\.installedBundleIdentifier)), ["com.me.app", "com.other.tv"])
+        // Same version as recorded, so the app's own build number is kept (not Ferry's signed one).
+        XCTAssertEqual(onTV.first { $0.installedBundleIdentifier == "com.me.app" }?.build, "1.0")
+
+        // Removed from the TV: its record goes; the iPhone record stays.
+        reconcileWith([])
+        XCTAssertTrue(history.records.allSatisfy { $0.destination == .iPhone })
+        XCTAssertEqual(history.records.count, 1)
+
+        // Persisted.
+        XCTAssertEqual(InstallHistory(directory: folder).records, history.records)
+        history.pruneAppleTVs(keeping: [])
+        XCTAssertEqual(history.records.count, 1)
+    }
+}
+
 enum TestData {
     static func profileBlob(devices: [String]?, getTaskAllow: Bool = false, allDevices: Bool = false) throws -> Data {
         var plist: [String: Any] = [

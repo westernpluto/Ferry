@@ -30,6 +30,8 @@ struct AppleTVPinRequest: Identifiable {
 final class AppleTVStore: ObservableObject {
     @Published private(set) var devices: [PairedAppleTV] = []
     @Published var pinRequest: AppleTVPinRequest?
+    /// Apps each Apple TV reported the last time it was asked, by device.
+    @Published private(set) var installedApps: [UUID: [AppleTVApp]] = [:]
 
     let browser = BonjourBrowser()
 
@@ -152,6 +154,7 @@ final class AppleTVStore: ObservableObject {
     func remove(_ device: PairedAppleTV) {
         PairingKeychain.delete(device.id.uuidString)
         verified[device.id] = nil
+        installedApps[device.id] = nil
         devices.removeAll { $0.id == device.id }
         persist()
     }
@@ -238,8 +241,18 @@ final class AppleTVStore: ObservableObject {
     }
 
     func listApps(_ id: UUID) async throws -> [AppleTVApp] {
-        try await withDevice(id) { address, record in
+        let apps = try await withDevice(id) { address, record in
             try await AppleTVBridge.listApps(address, hostName: hostName, pairing: record)
+        }
+        installedApps[id] = apps
+        return apps
+    }
+
+    /// Asks every paired Apple TV which apps it has. TVs that can't be reached are skipped
+    /// (their last answer is kept).
+    func refreshInstalledApps() async {
+        for device in devices {
+            _ = try? await listApps(device.id)
         }
     }
 

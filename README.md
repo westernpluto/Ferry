@@ -25,6 +25,21 @@ and no second copy is kept. Importing a file for an app that's already in the li
 Ferry also deletes the signed copy once an install finishes, and clears leftovers when it starts, so
 the library only ever holds one IPA per app.
 
+### Installed apps
+
+Ferry keeps track of what it installed where, and checks it against your library and sources:
+
+- **Apple TV**: Ferry asks each paired TV which apps it has (at launch, when you pull to refresh, and
+  after each install), so versions are exact and apps you removed disappear. Apps on the TV that
+  match your library or a source are tracked too, even if something else installed them.
+- **iPhone**: iOS doesn't let apps see what's installed, so Ferry records each install it hands to iOS
+  (version, bundle ID, date, and when its profile expires). These entries mean "last sent by Ferry".
+  Swipe one away on the app's page if you deleted the app.
+
+An installed app that's behind a source or your library, or whose signature expires within 7 days,
+shows in **Sources › Installed Apps**, on its library row and page, and on the TV's app list, and
+counts toward the Apps tab badge. Tap it to open the app and install the new version.
+
 ## Your own bundle IDs and team
 
 Some apps ask for bundle IDs or a team your profiles don't cover (for example a third-party app, or

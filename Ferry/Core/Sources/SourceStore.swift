@@ -152,13 +152,17 @@ final class SourceStore: ObservableObject {
     /// The source app a library app comes from: the source it was added from, or else any
     /// source listing its bundle ID.
     func sourceApp(for package: AppPackage) -> (sourceURL: URL, app: AltSource.App)? {
-        if let link = package.sourceLink,
+        sourceApp(bundleIdentifier: package.container.bundleIdentifier, link: package.sourceLink)
+    }
+
+    /// The source app for a bundle ID: the linked source first, then any source listing it.
+    func sourceApp(bundleIdentifier: String, link: SourceLink? = nil) -> (sourceURL: URL, app: AltSource.App)? {
+        if let link,
            let entry = entries.first(where: { $0.url == link.sourceURL }),
            let app = entry.source?.apps.first(where: { $0.bundleIdentifier == link.bundleIdentifier }) {
             return (entry.url, app)
         }
-        let id = package.container.bundleIdentifier
-        return allApps.first { $0.app.bundleIdentifier == id }
+        return allApps.first { $0.app.bundleIdentifier == bundleIdentifier }
     }
 
     func update(for package: AppPackage) -> Update? {

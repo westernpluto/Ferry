@@ -380,6 +380,7 @@ impl Session {
                 serde_json::json!({
                     "name": get("CFBundleDisplayName").or_else(|| get("CFBundleName")).unwrap_or_else(|| bundle_id.clone()),
                     "version": get("CFBundleShortVersionString").or_else(|| get("CFBundleVersion")),
+                    "build": get("CFBundleVersion"),
                     "bundleId": bundle_id,
                 })
             })

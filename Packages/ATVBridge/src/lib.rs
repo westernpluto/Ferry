@@ -199,7 +199,7 @@ pub unsafe extern "C" fn atv_install(
 }
 
 /// List user-installed apps as a JSON array of
-/// `{"bundleId": ..., "name": ..., "version": ...}`.
+/// `{"bundleId": ..., "name": ..., "version": ..., "build": ...}`.
 ///
 /// # Safety
 /// Pointers must be valid.
