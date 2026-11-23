@@ -17,8 +17,11 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # Version shown to people. 1.1: sources, own bundle IDs/team, Apple TV, install tracking,
+    # self-update. Bump the build number with every release; install-page builds use the
+    # workflow run number instead, so Ferry's self-update sees each one as newer.
+    MARKETING_VERSION: "1.1.0"
+    CURRENT_PROJECT_VERSION: "2"
 
 targets:
   Ferry:

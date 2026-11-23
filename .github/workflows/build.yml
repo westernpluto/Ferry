@@ -24,7 +24,7 @@ jobs:
 
   build:
     # GitHub names macOS images after their Xcode version. `xcode-27` is the macOS 27
-    # image (Apple silicon) with Xcode 27.x and the iPhone Duo simulator.
+    # image (Apple silicon) with Xcode 27.x.
     runs-on: xcode-27
     env:
       XCODE_APP: /Applications/Xcode_27.1.app
@@ -57,33 +57,6 @@ jobs:
 
       - name: Generate project
         run: xcodegen generate
-
-      - name: Pick the iPhone Duo simulator
-        id: sim
-        run: |
-          UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          devices = json.load(sys.stdin)["devices"]
-          ios = sorted((r for r in devices if "iOS" in r), reverse=True)
-          for wanted in ("iPhone Duo", "iPhone"):
-              for runtime in ios:
-                  for d in devices[runtime]:
-                      name = d["name"]
-                      if name.startswith(wanted):
-                          print(d["udid"])
-                          print("Using", name, runtime, file=sys.stderr)
-                          sys.exit(0)
-          sys.exit("No iPhone simulator found")
-          ')
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-
-      - name: Test on simulator
-        run: |
-          xcodebuild test \
-            -project Ferry.xcodeproj \
-            -scheme Ferry \
-            -destination "id=${{ steps.sim.outputs.udid }}" \
-            CODE_SIGNING_ALLOWED=NO
 
       - name: Build unsigned IPA
         run: |

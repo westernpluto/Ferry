@@ -240,8 +240,9 @@ Dependencies (Swift Package Manager): [ZIPFoundation](https://github.com/weichse
 and the local `Packages/ZSignKit` (zsign + [OpenSSL](https://github.com/krzyzanowskim/OpenSSL-Package)) for signing.
 
 CI (`.github/workflows/build.yml`) checks the Rust bridge on Linux (`cargo fmt`, `clippy`, `test`), then
-on GitHub's `xcode-27` runner (macOS 27, Apple silicon) with Xcode 27.1 builds the bridge, generates the project, runs the unit tests on the **iPhone Duo** simulator and builds
-an unsigned IPA artifact. GitHub names these images after the Xcode version, so there's no
+on GitHub's `xcode-27` runner (macOS 27, Apple silicon) with Xcode 27.1 builds the bridge, generates the project and builds
+an unsigned IPA artifact. (Running the unit tests on a simulator is switched off for now; run them in Xcode
+with ⌘U.) GitHub names these images after the Xcode version, so there's no
 `macos-27.1` label. The step log shows the exact macOS build.
 
 ## Setting up "On this iPhone" mode
